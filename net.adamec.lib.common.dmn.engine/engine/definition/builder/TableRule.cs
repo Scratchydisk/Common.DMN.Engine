@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using net.adamec.lib.common.dmn.engine.engine.decisions.table.definition;
+using net.adamec.lib.common.dmn.engine.utils;
 
 namespace net.adamec.lib.common.dmn.engine.engine.definition.builder
 {

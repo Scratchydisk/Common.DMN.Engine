@@ -26,6 +26,20 @@ namespace net.adamec.lib.common.dmn.engine.parser.dto
             defaultNamespace: DmnParser.XmlNamespaceDmn13, root: new XmlRootAttribute("decisionTable") { Namespace = DmnParser.XmlNamespaceDmn13 });
 
         /// <summary>
+        /// Serializer used for the serialization proxy class - DMN version 1.4
+        /// </summary>
+        private static readonly XmlSerializer DecisionTableSerializableSerializer14 = new XmlSerializer(
+            typeof(DecisionTableSerializable), null, new Type[] { },
+            defaultNamespace: DmnParser.XmlNamespaceDmn14, root: new XmlRootAttribute("decisionTable") { Namespace = DmnParser.XmlNamespaceDmn14 });
+
+        /// <summary>
+        /// Serializer used for the serialization proxy class - DMN version 1.5
+        /// </summary>
+        private static readonly XmlSerializer DecisionTableSerializableSerializer15 = new XmlSerializer(
+            typeof(DecisionTableSerializable), null, new Type[] { },
+            defaultNamespace: DmnParser.XmlNamespaceDmn15, root: new XmlRootAttribute("decisionTable") { Namespace = DmnParser.XmlNamespaceDmn15 });
+
+        /// <summary>
         /// Hit policy attribute
         /// Used just by deserializer, translated within <see cref="HitPolicy"/> property getter
         /// </summary>
@@ -115,9 +129,15 @@ namespace net.adamec.lib.common.dmn.engine.parser.dto
         {
             var r = reader.ReadSubtree();
 
-            var serializer = reader.NamespaceURI == DmnParser.XmlNamespaceDmn11
-                ? DecisionTableSerializableSerializer
-                : DecisionTableSerializableSerializer13;
+            XmlSerializer serializer;
+            if (reader.NamespaceURI == DmnParser.XmlNamespaceDmn11)
+                serializer = DecisionTableSerializableSerializer;
+            else if (reader.NamespaceURI == DmnParser.XmlNamespaceDmn14)
+                serializer = DecisionTableSerializableSerializer14;
+            else if (reader.NamespaceURI == DmnParser.XmlNamespaceDmn15)
+                serializer = DecisionTableSerializableSerializer15;
+            else
+                serializer = DecisionTableSerializableSerializer13;
 
             var proxy = (DecisionTableSerializable)serializer.Deserialize(r);
             Inputs = proxy.Inputs;

@@ -1,5 +1,4 @@
 ﻿using System.Diagnostics.CodeAnalysis;
-using net.adamec.lib.common.dmn.engine.parser;
 
 namespace net.adamec.lib.common.dmn.engine.engine.decisions.table.definition
 {
@@ -13,7 +12,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions.table.definition
         /// </summary>
         public DmnDecisionTableInput Input { get; }
         /// <summary>
-        /// Expression used to evaluate the rule input match ("both sides")
+        /// FEEL expression used to evaluate the rule input match (raw unary test expression)
         /// </summary>
         public string Expression { get; }
 
@@ -31,7 +30,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions.table.definition
         {
             Input = input;
             UnparsedExpression = unparsedExpression;
-            Expression = SfeelParser.ParseInput(unparsedExpression, string.IsNullOrWhiteSpace(input.Expression) ? input.Variable.Name : input.Expression);
+            Expression = unparsedExpression;
         }
 
         /// <summary>Returns a string that represents the current object.</summary>

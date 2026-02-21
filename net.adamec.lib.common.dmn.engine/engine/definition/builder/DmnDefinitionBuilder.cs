@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics.CodeAnalysis;
-using net.adamec.lib.common.core.logging;
+using NLog;
+using net.adamec.lib.common.dmn.engine.utils;
 
 namespace net.adamec.lib.common.dmn.engine.engine.definition.builder
 {
@@ -12,7 +13,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition.builder
         /// <summary>
         /// Logger
         /// </summary>
-        private static readonly ILogger Logger = CommonLogging.CreateLogger<DmnDefinitionBuilder>();
+        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>
         /// Flag whether the definition has been already built.

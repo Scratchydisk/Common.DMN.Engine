@@ -1,13 +1,18 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using DynamicExpresso;
-using net.adamec.lib.common.core.logging;
+using NLog;
 using net.adamec.lib.common.dmn.engine.engine.decisions;
+using net.adamec.lib.common.dmn.engine.utils;
 using net.adamec.lib.common.dmn.engine.engine.definition;
 using net.adamec.lib.common.dmn.engine.engine.execution.result;
-using net.adamec.lib.common.dmn.engine.parser;
+using System.Text.RegularExpressions;
+using net.adamec.lib.common.dmn.engine.feel;
+using net.adamec.lib.common.dmn.engine.feel.ast;
+using net.adamec.lib.common.dmn.engine.feel.eval;
+using net.adamec.lib.common.dmn.engine.feel.parsing;
+using net.adamec.lib.common.dmn.engine.feel.types;
 
 namespace net.adamec.lib.common.dmn.engine.engine.execution.context
 {
@@ -19,19 +24,24 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         /// <summary>
         /// Logger
         /// </summary>
-        protected static ILogger Logger = CommonLogging.CreateLogger<DmnExecutionContext>();
+        protected static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>
         /// Parsed (pre-processed) expressions cache (Global and Definition)
         /// </summary>
-        protected static readonly ConcurrentDictionary<string, Lambda> ParsedExpressionsCache =
-            new ConcurrentDictionary<string, Lambda>();
+        protected static readonly ConcurrentDictionary<string, FeelAstNode> ParsedExpressionsCache =
+            new ConcurrentDictionary<string, FeelAstNode>();
 
         /// <summary>
-        /// Parsed (pre-processed) expressions cache (Context and Definitions)
+        /// Parsed (pre-processed) expressions cache (Context and Execution)
         /// </summary>
-        protected readonly ConcurrentDictionary<string, Lambda> ParsedExpressionsInstanceCache =
-            new ConcurrentDictionary<string, Lambda>();
+        protected readonly ConcurrentDictionary<string, FeelAstNode> ParsedExpressionsInstanceCache =
+            new ConcurrentDictionary<string, FeelAstNode>();
+
+        /// <summary>
+        /// Shared FEEL engine instance
+        /// </summary>
+        protected static readonly FeelEngine FeelEngine = new();
 
         /// <summary>
         /// Unique identifier of the execution context (set at CTOR)
@@ -120,7 +130,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         /// <param name="name">Name of the input parameter</param>
         /// <param name="value">Value of the input parameter</param>
         /// <returns><see cref="DmnExecutionContext"/></returns>
-        /// <exception cref="ArgumentException"><paramref name="name"/> is null or empty</exception>    
+        /// <exception cref="ArgumentException"><paramref name="name"/> is null or empty</exception>
         /// <exception cref="DmnExecutorException">Input parameter with given <paramref name="name"/> doesn't exist</exception>
         public virtual DmnExecutionContext WithInputParameter(string name, object value)
         {
@@ -134,6 +144,22 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
 
             variable.SetInputParameterValue(value);
             Logger.Info($"Execution context input parameter {name} set to {value}");
+
+            // Propagate value to alias variables (e.g. when Camunda exports use different
+            // names in DRD input data vs. decision table expressions)
+            if (options.ResolveInputAliases &&
+                Definition.InputExpressionAliases.TryGetValue(name, out var aliases))
+            {
+                foreach (var aliasName in aliases)
+                {
+                    if (Variables.TryGetValue(aliasName, out var aliasVar))
+                    {
+                        aliasVar.Value = value;
+                        Logger.Info($"Execution context alias variable {aliasName} set to {value} (alias of input {name})");
+                    }
+                }
+            }
+
             return this;
         }
 
@@ -146,7 +172,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         /// </remarks>
         /// <param name="parameters">Collection of parameters - Key=name, Value=value</param>
         /// <returns><see cref="DmnExecutionContext"/></returns>
-        /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null</exception>    
+        /// <exception cref="ArgumentNullException"><paramref name="parameters"/> is null</exception>
         public virtual DmnExecutionContext WithInputParameters(
             IReadOnlyCollection<KeyValuePair<string, object>> parameters)
         {
@@ -217,12 +243,53 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         }
 
         /// <summary>
+        /// Builds a FEEL evaluation context from the current execution variables.
+        /// </summary>
+        protected virtual FeelEvaluationContext BuildFeelEvaluationContext()
+        {
+            var evalContext = new FeelEvaluationContext();
+            foreach (var variable in Variables.Values)
+            {
+                var value = variable.Value;
+                // When value is null and the variable has a value type, use the default value
+                // (replicates old DynamicExpresso behavior where null int → 0, null bool → false, etc.)
+                if (value == null && variable.Type != null && variable.Type.IsValueType)
+                {
+                    value = Activator.CreateInstance(variable.Type);
+                }
+                // When value is null and the variable type is string, use empty string
+                // (replicates C# behavior where null string in concatenation = "")
+                else if (value == null && variable.Type == typeof(string))
+                {
+                    value = "";
+                }
+                // Coerce CLR values to FEEL canonical types
+                value = FeelTypeCoercion.CoerceToFeel(value);
+                evalContext.SetVariable(variable.Name, value);
+            }
+            return evalContext;
+        }
+
+        /// <summary>
+        /// Builds a FEEL scope with all known variable names for multi-word name resolution.
+        /// </summary>
+        protected virtual FeelScope BuildFeelScope()
+        {
+            var scope = new FeelScope();
+            foreach (var variable in Variables.Values)
+            {
+                scope.AddName(variable.Name);
+            }
+            return scope;
+        }
+
+        /// <summary>
         /// Evaluates expression
         /// </summary>
         /// <param name="expression">Expression to evaluate</param>
         /// <param name="outputType">Output (result) type</param>
         /// <param name="executionId">Identifier of the execution run</param>
-        /// <exception cref="ArgumentException"><paramref name="expression"/> is null or empty</exception>   
+        /// <exception cref="ArgumentException"><paramref name="expression"/> is null or empty</exception>
         /// <exception cref="ArgumentNullException"><paramref name="outputType"/> is null</exception>
         /// <exception cref="DmnExecutorException">Exception while invoking the expression</exception>
         /// <exception cref="DmnExecutorException">Can't convert the expression result to <paramref name="outputType"/></exception>
@@ -233,22 +300,17 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
                 throw Logger.Fatal<ArgumentException>($"{nameof(expression)} is null or empty");
             if (outputType == null) throw Logger.Fatal<ArgumentNullException>($"{nameof(outputType)} is null");
 
-            var interpreter = new Interpreter();
-            ConfigureInterpreter(interpreter);
+            expression = PreProcessExpression(expression);
+            var scope = BuildFeelScope();
 
-            var parameters = new List<Parameter>();
-            SetInterpreterParameters(parameters);
-
-
-
-            //Check parsed expression cache
+            // Check parsed expression cache
             var cacheKey = GetParsedExpressionCacheKey(executionId, expression, outputType);
             if (Options.ParsedExpressionCacheScope == ParsedExpressionCacheScopeEnum.None ||
-                !GetParsedExpressionsFromCache(cacheKey, out var parsedExpression))
+                !GetParsedExpressionsFromCache(cacheKey, out var parsedAst))
             {
                 try
                 {
-                    parsedExpression = interpreter.Parse(expression, outputType, parameters.ToArray());
+                    parsedAst = FeelEngine.ParseExpression(expression, scope);
                 }
                 catch (Exception exception)
                 {
@@ -257,14 +319,15 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
                 }
 
                 if (Options.ParsedExpressionCacheScope != ParsedExpressionCacheScopeEnum.None)
-                    CacheParsedExpression(cacheKey, parsedExpression);
+                    CacheParsedExpression(cacheKey, parsedAst);
             }
 
-            //Invoke expression to evaluate
+            // Evaluate expression
+            var evalContext = BuildFeelEvaluationContext();
             object result;
             try
             {
-                result = parsedExpression.Invoke(parameters.ToArray());
+                result = FeelEngine.Evaluate(parsedAst, evalContext);
             }
             catch (Exception exception)
             {
@@ -272,11 +335,11 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
                     exception);
             }
 
-            //Convert the result
+            // Convert the result to the expected output type
             object resultConverted;
             try
             {
-                resultConverted = Convert.ChangeType(result, outputType);
+                resultConverted = ConvertResult(result, outputType);
             }
             catch (Exception exception)
             {
@@ -288,43 +351,81 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         }
 
         /// <summary>
-        /// Prepares the parameters that will be used when invoking the expression. All <see cref="Variables"/> are added to <paramref name="parameters"/>.
+        /// Evaluates a FEEL simple unary tests expression against the given input value.
+        /// Used for decision table rule input evaluation.
         /// </summary>
-        /// <param name="parameters">Set of parameters that will be used for expression invocation</param>
-        protected virtual void SetInterpreterParameters(List<Parameter> parameters)
+        /// <param name="unaryTestsExpression">The unary tests expression (e.g. "> 5", "1..10", "\"hello\"")</param>
+        /// <param name="inputValue">The input value to test against</param>
+        /// <param name="executionId">Identifier of the execution run</param>
+        /// <returns>True if the input value matches the unary tests</returns>
+        public virtual bool EvalUnaryTests(string unaryTestsExpression, object inputValue, string executionId)
         {
-            //Prepare variables (as interpreter parameters)       
-            // ReSharper disable once LoopCanBeConvertedToQuery
-            foreach (var variable in Variables.Values)
-            {
-                //check null variable for value type
-                var varValue = variable.Value ??
-                               (variable.Type?.IsValueType ?? false ? Activator.CreateInstance(variable.Type) : null);
+            if (string.IsNullOrWhiteSpace(unaryTestsExpression))
+                throw Logger.Fatal<ArgumentException>($"{nameof(unaryTestsExpression)} is null or empty");
 
-                var parameter = new Parameter(
-                    variable.Name,
-                    variable.Type ?? varValue?.GetType() ?? typeof(object),
-                    varValue);
-                parameters.Add(parameter);
+            unaryTestsExpression = PreProcessExpression(unaryTestsExpression);
+            var scope = BuildFeelScope();
+
+            // Check parsed expression cache
+            var cacheKey = GetParsedExpressionCacheKey(executionId, $"UT:{unaryTestsExpression}", typeof(bool));
+            if (Options.ParsedExpressionCacheScope == ParsedExpressionCacheScopeEnum.None ||
+                !GetParsedExpressionsFromCache(cacheKey, out var parsedAst))
+            {
+                try
+                {
+                    parsedAst = FeelEngine.ParseSimpleUnaryTests(unaryTestsExpression, scope);
+                }
+                catch (Exception exception)
+                {
+                    throw Logger.Fatal<DmnExecutorException>(
+                        $"Exception while parsing the unary tests expression {unaryTestsExpression}", exception);
+                }
+
+                if (Options.ParsedExpressionCacheScope != ParsedExpressionCacheScopeEnum.None)
+                    CacheParsedExpression(cacheKey, parsedAst);
+            }
+
+            // Evaluate
+            var evalContext = BuildFeelEvaluationContext();
+            evalContext.InputValue = FeelTypeCoercion.CoerceToFeel(inputValue);
+
+            try
+            {
+                var evaluator = new FeelEvaluator(evalContext, feel.functions.FeelBuiltInFunctions.Resolve);
+                return evaluator.EvaluateAsUnaryTest(parsedAst);
+            }
+            catch (Exception exception)
+            {
+                throw Logger.Fatal<DmnExecutorException>(
+                    $"Exception while evaluating the unary tests expression {unaryTestsExpression}", exception);
             }
         }
 
         /// <summary>
-        /// Configures the <see cref="Interpreter"/> that will invoke the expression. Adds S-FEEL functions to the interpreter and some "common" references (types)
+        /// Converts a FEEL evaluation result to the expected CLR output type.
+        /// Handles FEEL-specific types (decimal, DateOnly, etc.) and standard .NET conversions.
         /// </summary>
-        /// <param name="interpreter">Interpreter to be configured</param>
-        protected virtual void ConfigureInterpreter(Interpreter interpreter)
+        protected static object ConvertResult(object result, Type outputType)
         {
-            interpreter.Reference(typeof(Array));
-            interpreter.Reference(typeof(Enum));
-            interpreter.Reference(typeof(DateTimeOffset));
-            interpreter.Reference(typeof(System.Globalization.CultureInfo));
-
-            //Add S-FEEL functions to the interpreter
-            foreach (var customFunction in SfeelParser.CustomFunctions)
+            if (result == null)
             {
-                interpreter.SetFunction(customFunction.Key, customFunction.Value);
+                if (outputType.IsValueType)
+                {
+                    // For nullable value types, return null
+                    if (Nullable.GetUnderlyingType(outputType) != null) return null;
+                    return Activator.CreateInstance(outputType);
+                }
+                return null;
             }
+            if (outputType == typeof(object)) return result;
+            if (outputType.IsInstanceOfType(result)) return result;
+
+            // Use FEEL type coercion first
+            var coerced = FeelTypeCoercion.CoerceToClr(result, outputType);
+            if (coerced != null) return coerced;
+
+            // Fallback to Convert.ChangeType for standard types
+            return Convert.ChangeType(result, outputType);
         }
 
         /// <summary>
@@ -335,7 +436,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         /// <param name="cacheKey">Retrieval key of the <paramref name="parsedExpression"/></param>
         /// <param name="parsedExpression">Parsed expression retrieved from cache if successful</param>
         /// <returns>True when the <paramref name="parsedExpression"/> has been retrieved from cache, otherwise false</returns>
-        protected virtual bool GetParsedExpressionsFromCache(string cacheKey, out Lambda parsedExpression)
+        protected virtual bool GetParsedExpressionsFromCache(string cacheKey, out FeelAstNode parsedExpression)
         {
 
             if (Options.ParsedExpressionCacheScope == ParsedExpressionCacheScopeEnum.Global ||
@@ -354,7 +455,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         /// </summary>
         /// <param name="cacheKey">Retrieval key of the <paramref name="parsedExpression"/></param>
         /// <param name="parsedExpression">Parsed expression to cache</param>
-        protected virtual void CacheParsedExpression(string cacheKey, Lambda parsedExpression)
+        protected virtual void CacheParsedExpression(string cacheKey, FeelAstNode parsedExpression)
         {
             if (Options.ParsedExpressionCacheScope == ParsedExpressionCacheScopeEnum.Global ||
                 Options.ParsedExpressionCacheScope == ParsedExpressionCacheScopeEnum.Definition)
@@ -432,13 +533,13 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         /// </summary>
         public virtual void PurgeExpressionCacheContextScope()
         {
-            var keys = ParsedExpressionsInstanceCache.Keys.Where(k => k.StartsWith($"{Id}||")); 
+            var keys = ParsedExpressionsInstanceCache.Keys.Where(k => k.StartsWith($"{Id}||"));
             foreach (var key in keys)
             {
                 ParsedExpressionsInstanceCache.TryRemove(key, out _);
             }
         }
-        
+
         /// <summary>
         /// Purge all cached expressions belonging to given Definition <paramref name="definitionId"/> scope
         /// </summary>
@@ -477,12 +578,41 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
             }
         }
         /// <summary>
+        /// Pre-processes a DMN expression to handle DMN-style date/time/duration constructor syntax.
+        /// Converts unquoted date/time arguments to quoted strings:
+        /// <c>date(2018-01-23)</c> → <c>date("2018-01-23")</c>
+        /// <c>time(13:00)</c> → <c>time("13:00")</c>
+        /// <c>duration(P3Y)</c> → <c>duration("P3Y")</c>
+        /// String literals are preserved (not modified).
+        /// </summary>
+        protected static string PreProcessExpression(string expression)
+        {
+            if (string.IsNullOrWhiteSpace(expression)) return expression;
+
+            // Single regex that matches EITHER a string literal (to skip it) OR a date/time/duration
+            // constructor with an unquoted literal argument. The alternation ensures string contents
+            // are never modified. Argument must start with a digit (dates/times), 'P' (durations),
+            // or 'T' followed by a digit (time-only), to avoid matching variable names.
+            expression = Regex.Replace(expression,
+                @"""(?:[^""\\]|\\.)*""" +                                          // Alt 1: string literal
+                @"|\b(date\s+and\s+time|date|time|duration)\((?!"")" +             // Alt 2: function(
+                @"(\d[\d\-T:+.Z]*|P[\dYMDTHS.]+|T\d[\d:.+\-Z]*)\)",              // unquoted literal arg)
+                match =>
+                {
+                    if (!match.Groups[1].Success) return match.Value; // string literal — keep as-is
+                    return $"{match.Groups[1].Value}(\"{match.Groups[2].Value}\")";
+                });
+
+            return expression;
+        }
+
+        /// <summary>
         /// Evaluates expression
         /// </summary>
         /// <param name="expression">Expression to evaluate</param>
         /// <param name="executionId">Identifier of the execution run</param>
         /// <typeparam name="TOutputType">Output (result) type</typeparam>
-        /// <exception cref="ArgumentNullException"><paramref name="expression"/> is null or empty</exception>   
+        /// <exception cref="ArgumentNullException"><paramref name="expression"/> is null or empty</exception>
         /// <returns>The expression result converted to <typeparamref name="TOutputType"/></returns>
         public TOutputType EvalExpression<TOutputType>(string expression, string executionId)
         {

@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using net.adamec.lib.common.core.logging;
+using NLog;
 using net.adamec.lib.common.dmn.engine.engine.definition;
-
 using net.adamec.lib.common.dmn.engine.engine.execution.context;
 using net.adamec.lib.common.dmn.engine.engine.execution.result;
 using net.adamec.lib.common.dmn.engine.utils;
@@ -18,7 +17,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions
         /// <summary>
         /// Logger
         /// </summary>
-        protected ILogger Logger { get; }
+        protected Logger Logger { get; }
 
         /// <summary>
         /// Decision unique name
@@ -68,7 +67,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions
             IReadOnlyCollection<IDmnDecision> requiredDecisions,
             string label = null)
         {
-            Logger = CommonLogging.CreateLogger(GetType());
+            Logger = LogManager.GetLogger(GetType().FullName);
             Name = name ?? throw Logger.Fatal<ArgumentNullException>($"{nameof(name)} is null");
             Label = string.IsNullOrWhiteSpace(label) ? name : label;
             RequiredInputs = requiredInputs ??

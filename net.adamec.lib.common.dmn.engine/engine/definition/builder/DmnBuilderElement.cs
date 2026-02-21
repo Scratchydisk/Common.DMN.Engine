@@ -1,5 +1,6 @@
 ﻿using System;
-using net.adamec.lib.common.core.logging;
+using NLog;
+using net.adamec.lib.common.dmn.engine.utils;
 
 namespace net.adamec.lib.common.dmn.engine.engine.definition.builder
 {
@@ -11,7 +12,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition.builder
         /// <summary>
         /// Logger
         /// </summary>
-        protected ILogger Logger;
+        protected Logger Logger;
 
         /// <summary>
         /// All known variables of <see cref="DmnDefinitionBuilder"/>
@@ -30,7 +31,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition.builder
         /// <param name="decisions">Decisions catalog of of <see cref="DmnDefinitionBuilder"/></param>
         protected DmnBuilderElement(VariableCatalog variables, DecisionCatalog decisions)
         {
-            Logger = CommonLogging.CreateLogger(GetType());
+            Logger = LogManager.GetLogger(GetType().FullName);
             Variables = variables ?? throw new ArgumentNullException(nameof(variables));
             Decisions = decisions ?? throw new ArgumentNullException(nameof(decisions));
         }

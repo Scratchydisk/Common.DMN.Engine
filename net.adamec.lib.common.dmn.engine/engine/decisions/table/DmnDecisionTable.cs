@@ -10,6 +10,7 @@ using net.adamec.lib.common.dmn.engine.engine.execution;
 using net.adamec.lib.common.dmn.engine.engine.execution.context;
 using net.adamec.lib.common.dmn.engine.engine.execution.result;
 using net.adamec.lib.common.dmn.engine.parser.dto;
+using net.adamec.lib.common.dmn.engine.utils;
 
 namespace net.adamec.lib.common.dmn.engine.engine.decisions.table
 {
@@ -283,23 +284,28 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions.table
                 var match = true;
                 foreach (var ruleInput in rule.Inputs)
                 {
+                    // Get the input value for this rule input
+                    object inputValue;
+                    if (!string.IsNullOrWhiteSpace(ruleInput.Input.Expression))
+                    {
+                        //input is mapped to expression, so evaluate it to get the value
+                        inputValue = context.EvalExpression<object>(ruleInput.Input.Expression, executionId);
+                    }
+                    else
+                    {
+                        //input is mapped to variable
+                        var variable = context.GetVariable(ruleInput.Input.Variable);
+                        inputValue = variable.Value;
+                        // Default value for null value types (replicates old DynamicExpresso behavior)
+                        if (inputValue == null && variable.Type != null && variable.Type.IsValueType)
+                            inputValue = Activator.CreateInstance(variable.Type);
+                    }
+
                     //check allowed input values
                     var allowedValues = ruleInput.Input.AllowedValues;
                     if (allowedValues != null && allowedValues.Length > 0)
                     {
-                        string value = null;
-                        if (!string.IsNullOrWhiteSpace(ruleInput.Input.Expression))
-                        {
-                            //input is mapped to expression, so evaluate it to ger the value
-                            var valueObj = context.EvalExpression<object>(ruleInput.Input.Expression, executionId);
-                            if (valueObj != null) value = valueObj.ToString();
-                        }
-                        else
-                        {
-                            //input is mapped to variable
-                            value = context.GetVariable(ruleInput.Input.Variable).Value?.ToString();
-                        }
-
+                        var value = inputValue?.ToString();
                         if (!allowedValues.Contains(value))
                         {
                             match = false;
@@ -310,13 +316,19 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions.table
                         }
                     }
 
+                    // Empty/dash expression means "any value matches"
+                    if (string.IsNullOrWhiteSpace(ruleInput.UnparsedExpression) || ruleInput.UnparsedExpression.Trim() == "-")
+                    {
+                        continue;
+                    }
+
                     if (Logger.IsTraceEnabled)
                         Logger.TraceCorr(executionId,
-                            $"Evaluating decision table {Name} rule {rule} input #{ruleInput.Input.Index}: {ruleInput.Expression}... ");
-                    var result = context.EvalExpression<bool>(ruleInput.Expression, executionId);
+                            $"Evaluating decision table {Name} rule {rule} input #{ruleInput.Input.Index}: {ruleInput.UnparsedExpression}... ");
+                    var result = context.EvalUnaryTests(ruleInput.UnparsedExpression, inputValue, executionId);
                     if (Logger.IsTraceEnabled)
                         Logger.TraceCorr(executionId,
-                            $"Evaluated decision table {Name} rule {rule} input #{ruleInput.Input.Index}: {ruleInput.Expression} with result {result}");
+                            $"Evaluated decision table {Name} rule {rule} input #{ruleInput.Input.Index}: {ruleInput.UnparsedExpression} with result {result}");
 
                     // ReSharper disable once InvertIf
                     if (!result)
@@ -361,28 +373,32 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions.table
             //EVALUATE RULES
             Logger.InfoCorr(executionId, $"Evaluating decision table {Name} rules...");
             Parallel.ForEach(Rules, rule =>
-            //foreach (var rule in Rules)
             {
                 var match = true;
                 foreach (var ruleInput in rule.Inputs)
                 {
+                    // Get the input value for this rule input
+                    object inputValue;
+                    if (!string.IsNullOrWhiteSpace(ruleInput.Input.Expression))
+                    {
+                        //input is mapped to expression, so evaluate it to get the value
+                        inputValue = context.EvalExpression<object>(ruleInput.Input.Expression, executionId);
+                    }
+                    else
+                    {
+                        //input is mapped to variable
+                        var variable = context.GetVariable(ruleInput.Input.Variable);
+                        inputValue = variable.Value;
+                        // Default value for null value types (replicates old DynamicExpresso behavior)
+                        if (inputValue == null && variable.Type != null && variable.Type.IsValueType)
+                            inputValue = Activator.CreateInstance(variable.Type);
+                    }
+
                     //check allowed input values
                     var allowedValues = ruleInput.Input.AllowedValues;
                     if (allowedValues != null && allowedValues.Length > 0)
                     {
-                        string value = null;
-                        if (!string.IsNullOrWhiteSpace(ruleInput.Input.Expression))
-                        {
-                            //input is mapped to expression, so evaluate it to ger the value
-                            var valueObj = context.EvalExpression<object>(ruleInput.Input.Expression, executionId);
-                            if (valueObj != null) value = valueObj.ToString();
-                        }
-                        else
-                        {
-                            //input is mapped to variable
-                            value = context.GetVariable(ruleInput.Input.Variable).Value?.ToString();
-                        }
-
+                        var value = inputValue?.ToString();
                         if (!allowedValues.Contains(value))
                         {
                             match = false;
@@ -393,16 +409,19 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions.table
                         }
                     }
 
-
+                    // Empty/dash expression means "any value matches"
+                    if (string.IsNullOrWhiteSpace(ruleInput.UnparsedExpression) || ruleInput.UnparsedExpression.Trim() == "-")
+                    {
+                        continue;
+                    }
 
                     if (Logger.IsTraceEnabled)
                         Logger.TraceCorr(executionId,
-                            $"Evaluating decision table {Name} rule {rule} input #{ruleInput.Input.Index}: {ruleInput.Expression}... ");
-                    var result = context.EvalExpression<bool>(ruleInput.Expression, executionId);
+                            $"Evaluating decision table {Name} rule {rule} input #{ruleInput.Input.Index}: {ruleInput.UnparsedExpression}... ");
+                    var result = context.EvalUnaryTests(ruleInput.UnparsedExpression, inputValue, executionId);
                     if (Logger.IsTraceEnabled)
                         Logger.TraceCorr(executionId,
-                            $"Evaluated decision table {Name} rule {rule} input #{ruleInput.Input.Index}: {ruleInput.Expression} with result {result}");
-
+                            $"Evaluated decision table {Name} rule {rule} input #{ruleInput.Input.Index}: {ruleInput.UnparsedExpression} with result {result}");
 
                     // ReSharper disable once InvertIf
                     if (!result)
@@ -410,7 +429,6 @@ namespace net.adamec.lib.common.dmn.engine.engine.decisions.table
                         match = false;
                         break;
                     }
-
                 }
 
                 Logger.InfoCorr(executionId,

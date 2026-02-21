@@ -36,6 +36,17 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition
         public IReadOnlyDictionary<string, IDmnDecision> Decisions { get; }
 
         /// <summary>
+        /// Maps input data variable names to expression variable aliases.
+        /// When a DMN file uses different names in the DRD input data elements
+        /// vs. the decision table input expressions (common in Camunda exports),
+        /// this map tracks the relationship so input parameter values can be
+        /// propagated to the expression variables at execution time.
+        /// Key: input data variable name. Value: list of alias variable names.
+        /// </summary>
+        public IReadOnlyDictionary<string, IReadOnlyList<string>> InputExpressionAliases { get; internal set; }
+            = new Dictionary<string, IReadOnlyList<string>>();
+
+        /// <summary>
         /// List of extensions that can be used to any related data.
         /// Engine doesn't neither manage nor touches the extensions
         /// </summary>

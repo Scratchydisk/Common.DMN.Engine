@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using net.adamec.lib.common.core.logging;
+using NLog;
 using net.adamec.lib.common.dmn.engine.engine.decisions;
+using net.adamec.lib.common.dmn.engine.utils;
 using net.adamec.lib.common.dmn.engine.engine.decisions.expression;
 using net.adamec.lib.common.dmn.engine.engine.decisions.table;
 using net.adamec.lib.common.dmn.engine.engine.decisions.table.definition;
@@ -26,7 +27,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition
         /// <summary>
         /// Logger
         /// </summary>
-        protected static ILogger Logger = CommonLogging.CreateLogger<DmnDefinitionFactory>();
+        protected static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>
         /// Default known types recognized by factory
@@ -124,9 +125,27 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition
         /// </summary>
         /// <exception cref="InvalidOperationException"><see cref="SourceModel"/> is null.</exception>   
         /// <returns>DMN model definition that can be used to execute the decisions within the <see cref="execution.context.DmnExecutionContext"/></returns>
+        /// <summary>
+        /// When true (default), the factory detects when DRD input data names differ from
+        /// the variable names used in decision table input expressions and creates alias
+        /// variables so that input parameter values are propagated correctly at execution time.
+        /// This is common in Camunda exports where input data has human-readable names
+        /// (e.g. "Number of Years Incorporated") while expressions use camelCase (e.g. "yearsIncorporated").
+        /// </summary>
+        public static bool ResolveInputExpressionAliases { get; set; } = true;
+
         protected virtual DmnDefinition ProcessModel()
         {
             if (SourceModel == null) throw Logger.Fatal<InvalidOperationException>($"{nameof(SourceModel)} is null");
+
+            //-----------------------------------------------------------------
+            // Pre-process: build input expression alias map and create alias variables
+            //-----------------------------------------------------------------
+            Dictionary<string, List<string>> inputAliases = null;
+            if (ResolveInputExpressionAliases)
+            {
+                inputAliases = BuildInputExpressionAliases();
+            }
 
             //-----------------------------------------------------------------
             // Process DMN Model
@@ -136,6 +155,22 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition
             if (SourceModel.InputData != null) //it's not common, but OK to have no input data
             {
                 ProcessInputDataSource();
+            }
+
+            // Create alias variables so that decision table expressions can resolve them
+            if (inputAliases != null)
+            {
+                foreach (var kvp in inputAliases)
+                {
+                    foreach (var aliasName in kvp.Value)
+                    {
+                        if (!Variables.ContainsKey(aliasName))
+                        {
+                            var aliasVariable = new DmnVariableDefinition(aliasName);
+                            Variables.Add(aliasName, aliasVariable);
+                        }
+                    }
+                }
             }
 
             //Process decisions
@@ -160,6 +195,14 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition
                     v => (IDmnVariable)v.Value),
                 Decisions);
 
+            // Attach the alias map to the definition
+            if (inputAliases != null && inputAliases.Count > 0)
+            {
+                definition.InputExpressionAliases = inputAliases.ToDictionary(
+                    kvp => kvp.Key,
+                    kvp => (IReadOnlyList<string>)kvp.Value.AsReadOnly());
+            }
+
             //-----------------------------------------------------------------
             // Process extensions
             //-----------------------------------------------------------------
@@ -171,6 +214,122 @@ namespace net.adamec.lib.common.dmn.engine.engine.definition
             }
 
             return definition;
+        }
+
+        /// <summary>
+        /// Walks the model's decisions to find cases where DRD input data names differ
+        /// from the variable names used in decision table input expressions.
+        /// Returns a map: normalized input data name → list of alias expression variable names.
+        /// </summary>
+        protected virtual Dictionary<string, List<string>> BuildInputExpressionAliases()
+        {
+            var map = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+            if (SourceModel.InputData == null || SourceModel.Decisions == null) return map;
+
+            // Build inputData ID → normalized name lookup
+            var inputIdToNormalized = new Dictionary<string, string>();
+            foreach (var input in SourceModel.InputData)
+            {
+                var inputName = !string.IsNullOrWhiteSpace(input.Name) ? input.Name : input.Id;
+                if (DmnVariableDefinition.CanNormalizeVariableName(inputName, out var normalized, out _))
+                {
+                    inputIdToNormalized[input.Id] = normalized;
+                }
+            }
+
+            // Build a lookup of all expression variable names and labels across all decision table inputs
+            var tableInfoByExprName = new Dictionary<string, (string typeRef, string tableLabel)>(StringComparer.OrdinalIgnoreCase);
+            var tableInfoByLabel = new Dictionary<string, (string exprName, string typeRef)>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var decision in SourceModel.Decisions)
+            {
+                if (decision.DecisionTable?.Inputs == null) continue;
+                foreach (var tableInput in decision.DecisionTable.Inputs)
+                {
+                    var exprText = tableInput.InputExpression?.Text?.Trim();
+                    if (!string.IsNullOrWhiteSpace(exprText) &&
+                        DmnVariableDefinition.CanNormalizeVariableName(exprText, out var exprNormalized, out _))
+                    {
+                        if (!tableInfoByExprName.ContainsKey(exprNormalized))
+                            tableInfoByExprName[exprNormalized] = (tableInput.InputExpression.TypeRef, tableInput.Label);
+                    }
+                    if (!string.IsNullOrWhiteSpace(tableInput.Label) && !string.IsNullOrWhiteSpace(exprText))
+                    {
+                        if (!tableInfoByLabel.ContainsKey(tableInput.Label))
+                        {
+                            DmnVariableDefinition.CanNormalizeVariableName(exprText, out var en, out _);
+                            tableInfoByLabel[tableInput.Label] = (en, tableInput.InputExpression?.TypeRef);
+                        }
+                    }
+                }
+            }
+
+            // For each input data element, try to find a matching expression variable
+            foreach (var (id, normalizedName) in inputIdToNormalized)
+            {
+                var inputLabel = SourceModel.InputData.FirstOrDefault(i => i.Id == id)?.Name;
+
+                // Try: normalized name matches expression variable name (case-sensitive check for alias)
+                if (tableInfoByExprName.TryGetValue(normalizedName, out _))
+                {
+                    // Check case-sensitive: if they're identical, no alias needed
+                    var exactKey = tableInfoByExprName.Keys.FirstOrDefault(k =>
+                        string.Equals(k, normalizedName, StringComparison.OrdinalIgnoreCase) &&
+                        !string.Equals(k, normalizedName, StringComparison.Ordinal));
+                    if (exactKey != null) AddAlias(map, normalizedName, exactKey);
+                    continue;
+                }
+
+                // Try: input label matches a table label → get the expression name
+                if (!string.IsNullOrWhiteSpace(inputLabel) && tableInfoByLabel.TryGetValue(inputLabel, out var info))
+                {
+                    if (info.exprName != null && !string.Equals(info.exprName, normalizedName, StringComparison.Ordinal))
+                        AddAlias(map, normalizedName, info.exprName);
+                    continue;
+                }
+
+                // Try: single-input-data decisions via information requirement chain
+                foreach (var decision in SourceModel.Decisions)
+                {
+                    if (decision.InformationRequirements == null || decision.DecisionTable?.Inputs == null) continue;
+
+                    var requiredInputIds = new List<string>();
+                    foreach (var req in decision.InformationRequirements)
+                    {
+                        try { if (req.RequirementType == InformationRequirementType.Input) requiredInputIds.Add(req.Ref); }
+                        catch { }
+                    }
+
+                    if (requiredInputIds.Count == 1 && requiredInputIds[0] == id)
+                    {
+                        foreach (var tableInput in decision.DecisionTable.Inputs)
+                        {
+                            var exprText = tableInput.InputExpression?.Text?.Trim();
+                            if (string.IsNullOrWhiteSpace(exprText)) continue;
+                            if (!DmnVariableDefinition.CanNormalizeVariableName(exprText, out var exprNormalized, out _)) continue;
+                            if (!string.Equals(exprNormalized, normalizedName, StringComparison.Ordinal))
+                            {
+                                AddAlias(map, normalizedName, exprNormalized);
+                                break;
+                            }
+                        }
+                        if (map.ContainsKey(normalizedName)) break;
+                    }
+                }
+            }
+
+            return map;
+        }
+
+        private static void AddAlias(Dictionary<string, List<string>> map, string inputName, string aliasName)
+        {
+            if (!map.TryGetValue(inputName, out var list))
+            {
+                list = new List<string>();
+                map[inputName] = list;
+            }
+            if (!list.Contains(aliasName)) list.Add(aliasName);
         }
 
         /// <summary>

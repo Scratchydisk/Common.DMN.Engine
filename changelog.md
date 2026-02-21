@@ -2,6 +2,61 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+## [2.0.0] - 2026-02-19 ##
+This is a major release. It's recommended to go through the [documentation](readme.md) for full details.
+
+### Breaking changes ###
+- **Target framework changed from .NET Standard 2.0 to .NET 10.0** — the library no longer supports .NET Framework or older .NET Core runtimes
+- **DynamicExpresso replaced with full FEEL evaluator** — all expressions (expression decisions, decision table rule inputs, rule outputs) are now evaluated using an ANTLR4-based FEEL interpreter instead of DynamicExpresso. Existing S-FEEL expressions (`>5`, `[1..10]`, `not(5,7)`, `"hello"`, etc.) remain valid FEEL and evaluate identically.
+- **FEEL type system** — data type mappings updated to align with the FEEL specification:
+  - `date` now maps to `DateOnly` (was `DateTime`)
+  - `time` maps to new `FeelTime` type
+  - `date and time` maps to `DateTimeOffset` (was `DateTime`)
+  - `years and months duration` maps to new `FeelYmDuration` type (calendar-based arithmetic)
+  - `days and time duration` maps to `TimeSpan`
+  - `number` maps to `decimal`
+- **Removed `SfeelParser`** — S-FEEL expression parsing is now handled natively by the FEEL evaluator
+- **Removed `DynamicExpresso.Core` dependency**
+- **Removed `RadCommons.core` dependency** — logging uses NLog directly
+- **Expression cache type changed** — cache stores `FeelAstNode` (immutable AST) instead of `DynamicExpresso.Lambda`. Cache key no longer includes output type (FEEL AST is type-independent).
+- **Removed `ConfigureInterpreter` and `SetInterpreterParameters` virtual methods** from `DmnExecutionContext` — DynamicExpresso customization points no longer exist
+- **Type mismatch behavior** — expressions with incompatible types (e.g., comparing string to number) return `null` instead of throwing exceptions, following FEEL three-valued logic
+- **Removed multi-framework test projects** — consolidated into single `net.adamec.lib.common.dmn.engine.tests` targeting .NET 10.0
+- **Duration arithmetic is calendar-based** — `date(2018-01-23) + duration(P3Y)` = `2021-01-23` (FEEL spec), not `2021-01-22` (365.25-day approximation as in v1.x)
+
+### Added ###
+- **Full FEEL evaluator** — ANTLR4-based lexer/parser with tree-walking interpreter supporting the complete FEEL expression language:
+  - Arithmetic, comparison, logical operators with null propagation
+  - `if`/`then`/`else`, `for`/`in`/`return`, `some`/`every` quantifiers
+  - List operations (1-based indexing, negative indices, filters, paths)
+  - Context expressions and nested context access
+  - Range types with `contains()` semantics
+  - Function definitions, named parameter invocation
+  - ~80 built-in functions: string, numeric, list, date/time, context, range, boolean, conversion
+- **Multi-word name resolution** — FEEL allows spaces in identifiers; `FeelNameResolver` uses longest-match semantics with `FeelScope` to resolve ambiguous token sequences
+- **FEEL type wrappers** — `FeelTime`, `FeelYmDuration`, `FeelRange`, `FeelContext`, `FeelFunction` with full arithmetic and comparison support
+- **FEEL three-valued logic** — `FeelValueComparer` implements null propagation, `and`/`or`/`not` with three-valued semantics
+- **FEEL type coercion** — `FeelTypeCoercion` handles FEEL-to-CLR and CLR-to-FEEL conversions (singleton list ↔ scalar, numeric coercion to decimal, DateTime → DateTimeOffset)
+- **DMN 1.4 and 1.5 XML parsing** — new namespaces and serializers for DMN 1.4 (`20211108/MODEL/`) and 1.5 (`20230324/MODEL/`)
+- **Auto-detection of DMN version** — `DmnParser.ParseAutoDetect()` reads root element namespace to determine version automatically
+- **Convenience parse methods** — `Parse14()`, `Parse15()`, `ParseString14()`, `ParseString15()`
+- **CLR interop** — FEEL evaluator supports CLR instance method calls (`.ToString()`, `.Substring()`) and static method calls (`double.Parse()`, `Math.Abs()`) for backward compatibility
+- **Cross-type date/time comparison** — `DateOnly` vs `DateTimeOffset`, `FeelTime` vs `DateTimeOffset` (compares time portions)
+
+### Changed ###
+- Target framework: .NET Standard 2.0 → .NET 10.0
+- NLog updated from 4.x to 5.3.4
+- Test projects consolidated into single project targeting .NET 10.0
+- Simulator updated to .NET 10.0-windows, uses `ParseAutoDetect()` for DMN version detection
+- MSTest updated to 3.x, FluentAssertions to 7.x
+
+### Removed ###
+- `DynamicExpresso.Core` package reference
+- `RadCommons.core` package reference
+- `parser/SfeelParser.cs`
+- Multi-framework test projects (netcore31, netcore5, netcore6, net462, net472)
+- `ConfigureInterpreter()` and `SetInterpreterParameters()` methods from `DmnExecutionContext`
+
 ## [1.1.1] - 2022-05-15 ##
 
 ### Fixed ###
@@ -110,6 +165,7 @@ As this is a major update, it's recommended to go through the [documentation](re
 ### Added ###
 - Initial release
 
+[2.0.0]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.1.1...v2.0.0
 [1.1.1]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.0.0...v1.0.1

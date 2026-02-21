@@ -1,9 +1,10 @@
 # DMN Engine #
 DMN Engine is a rule engine allowing to execute and evaluate the decisions defined in a DMN  model. Its primary target is to evaluate the decision tables that transform the inputs into the output(s) using the decision rules. Simple expression decisions are also supported as well as the complex decision models containing set of dependent decisions (tables or expressions).
- 
-The DMN Model is defined using the adopted [standard](https://www.omg.org/spec/DMN/1.1/) XML file defined by OMG. Such definition can be designed for example using the [Camunda modeler](https://camunda.com/download/modeler/), keeping in mind the following principles how the file is parsed and the definition used in DMN Engine.
+
+The DMN Model is defined using the adopted [standard](https://www.omg.org/spec/DMN/1.1/) XML file defined by OMG (versions 1.1, 1.3, 1.4, and 1.5 are supported). Such definition can be designed for example using the [Camunda modeler](https://camunda.com/download/modeler/), keeping in mind the following principles how the file is parsed and the definition used in DMN Engine.
 
 **NuGet package ID:** net.adamec.lib.common.dmn.engine
+**Target framework:** .NET 10.0
 
 See the latest changes in [changelog](changelog.md)
 
@@ -26,7 +27,7 @@ DMN Engine usage flows are quite straightforward.
 
 ![DMN engine blocks](doc/img/blocks.png)
 
-The decision model can be defined in DMN XML defined by OMG (version 1.1 or 1.3). The XML is parsed into `DmnModel` using `DmnParser.Parse`, `DmnParser.Parse13`, `DmnParser.Parse13ext`, `DmnParser.ParseString`, `DmnParser.ParseString13` or `DmnParser.ParseString13ext` methods.
+The decision model can be defined in DMN XML defined by OMG (versions 1.1, 1.3, 1.4, and 1.5). The XML is parsed into `DmnModel` using version-specific methods such as `DmnParser.Parse` (1.1), `DmnParser.Parse13`, `DmnParser.Parse13ext`, `DmnParser.Parse14`, `DmnParser.Parse15`, or the auto-detecting `DmnParser.ParseAutoDetect` method which reads the root element XML namespace to determine the DMN version. Corresponding `ParseString` variants are also available.
 
 *Note: When parsing with version 1.3ext (`DmnVersion.DmnVersionEnum.V1_3ext`), it still uses the DMN XML 1.3 but with a bit different logic of mapping the XML attributes to definition (details provided later in the document).*
 
@@ -44,16 +45,16 @@ The library uses the customized MS Build process in projects `build` and `build.
 Details about the build process are described in [build documentation](build/readme.md).
 
 ### Tests ###
-Tests are implemented using [MS Test Framework](https://github.com/microsoft/testfx) and provide also bunch of sample models that can help together with the test code to better understand how the DMN Engine works and is to be used. 
+Tests are implemented using [MS Test Framework](https://github.com/microsoft/testfx) and provide also bunch of sample models that can help together with the test code to better understand how the DMN Engine works and is to be used.
 
 Note: adjust the `LogHome` variable in `nlog.config` of test project as you need.
 
-The test code is in shared code project that is "linked" to test projects targeting different platforms (.net core 3.1, 5, 6; .net framework 4.6.2, 4.7.2).
-`DmnTestBase` class provides abstraction allowing to simply apply the same tests using the different sources (DMN XML 1.1/1.3/1.3ext or builders). 
+The test code is in a shared code project that is linked into the consolidated test project `net.adamec.lib.common.dmn.engine.tests` targeting .NET 10.0.
+`DmnTestBase` class provides abstraction allowing to simply apply the same tests using the different sources (DMN XML 1.1/1.3/1.3ext/1.4/1.5 or builders).
 
 The "primary" test class inherits from `DmnTestBase` and contains the test code and is set to test against DMN XML 1.1.
 
-The test classes for DMN 1.3 inherits from "primary" test class and override the `Source` property to use the DMN 1.3, the tests themselves are just inherited, so no need to code them again. Same approach is used for tests with parser version 1.3ext.
+The test classes for DMN 1.3 inherits from "primary" test class and override the `Source` property to use the DMN 1.3, the tests themselves are just inherited, so no need to code them again. Same approach is used for tests with parser version 1.3ext, 1.4, and 1.5.
 
 The builder based definition tests are prepared similar way - inherit from "primary" test class and set the `Source` to used the builders. `DmnBuilderSamples` class is generated from DMN XML files to provide the same decision model (DMN definition) but using the builders (Note: it might be useful to check this class to have a quick look how the builders work).
 
@@ -78,7 +79,7 @@ The XML model definition can also be provided as a `string` to `DmnParser.ParseS
 ```csharp
 model = DmnParser.ParseString("xml string");
 ```
-`DmnParser` uses the DMN XML v 1.1 by default. It can be overridden using the optional parameter `dmnVersion` when calling the parser. It can contain value `V1_1`(default, supporting DMN XML version 1.3), `V1_3` or 'V1_3ext(to support DMN XML version 1.3). The values are defined in `DmnVersionEnum`. Alternative way of using the DMN version 1.3 is to call methods `DmnParser.Parse13(fileName)`, `DmnParser.ParseString13("xml string")`, `DmnParser.Parse13ext(fileName)` or `DmnParser.ParseString13ext("xml string")`.  
+`DmnParser` uses the DMN XML v 1.1 by default. It can be overridden using the optional parameter `dmnVersion` when calling the parser. It can contain value `V1_1` (default), `V1_3`, `V1_3ext`, `V1_4` or `V1_5`. The values are defined in `DmnVersionEnum`. Alternative way is to call version-specific methods such as `DmnParser.Parse13(fileName)`, `DmnParser.Parse14(fileName)`, `DmnParser.Parse15(fileName)` and their `ParseString` variants. The recommended approach is to use `DmnParser.ParseAutoDetect(fileName)` which automatically detects the DMN version from the XML namespace.  
 
 The `DmnModel` needs to be transformed to the `DmnDefinition` using the `DmnDefinitionFactory` that gets the DMN Model and executes "second level parsing" to prepare the DMN Model for the Engine. The most of the "parsing" and validation logic is here. `DmnDefinition` is then used to create the `DmnExecutionContext` allowing the execution/evaluation of the decisions based on the parameters provided.
 
@@ -253,23 +254,15 @@ The Engine checks for the decision dependencies and when any decision needs to b
 ## Variables in Decision Model ##
 As mentioned above, the inputs are one kind of variables existing in the Engine context. The variables allow sharing the data between the model elements. When the decision is evaluated, it gets some information at the input and produces the outputs. The outputs are also stored into the variables, so they can be used as inputs for another decisions.
 
-The Engine uses the [Dynamic Expresso](https://github.com/davideicardi/DynamicExpresso) interpreter and the full set of variables is provided to the interpreter while evaluating any of the expressions within the Engine, so they can be recognized in expressions. *Note: Technically, the variables are provided as parameters, so it's possible to parse the expression once and invoke it with the real values when needed - DMN Engine implements the parsed expressions cache.*
+The Engine uses a full FEEL (Friendly Enough Expression Language) evaluator built with ANTLR4. All context variables are provided to the FEEL evaluation context and can be referenced in expressions. The FEEL evaluator parses expressions into an immutable AST (Abstract Syntax Tree) which is cached and can be re-evaluated with different variable values.
 
-```csharp
-var parameters = new List<Parameter>();
-foreach (var variable in Variables.Values)
-{
-	//check null variable for value type
-	var varValue = variable.Value ?? variable.Type?.GetDefaultValue();
-
-	var parameter = new Parameter(variable.Name, variable.Type ?? varValue?.GetType() ?? typeof(object), varValue);
-	parameters.Add(parameter);
-}
-
-parsedExpression = interpreter.Parse(expression, outputType, parameters.ToArray());
-var result = parsedExpression.Invoke(parameters.ToArray());
-}
-```
+The FEEL evaluator supports:
+- Full FEEL expression language including arithmetic, comparison, logical operators with null propagation
+- Three-valued logic (`true`, `false`, `null`)
+- Built-in FEEL functions (~80 functions for strings, numbers, lists, dates, contexts, ranges)
+- `if`/`then`/`else`, `for`/`in`/`return`, `some`/`every` quantifiers
+- List operations with 1-based indexing, filters, and paths
+- CLR method interop (`.ToString()`, `double.Parse()`, etc.) for backward compatibility with v1.x expressions
 
 The Engine context keeps the list of variables as triplets:
 - `Name` - name of the variable that is used as a reference as well as the name of the variable for the expression interpreter. 
@@ -301,23 +294,22 @@ As it's quite common (although not recommended) to use the space in the variable
 As the input names are used for backing variables, the above mentioned applies for the DMN input names as well.
 
 ### Data Types for Variables ###
-When the data type is defined in DMN model (attribute `typeRef`), the parser maps the types to the .NET types using the logic below
-```csharp
-...
-   typeName = typeName.ToLower();
-   switch (typeName)
-   {
-     case "string": return typeof(string);
-     case "boolean": return typeof(bool);
-     case "integer": return typeof(int);
-     case "long": return typeof(long);
-     case "double": return typeof(double);
-     case "date": return typeof(DateTime);
-     case "number": return typeof(decimal);
-     default: throw Logger.Fatal<DmnParserException>( $"Unsupported type name {typeName}");
-   }
-...
-```
+When the data type is defined in DMN model (attribute `typeRef`), the parser maps the types to the .NET types using FEEL-aligned type mappings:
+
+| `typeRef` value | .NET Type |
+|-----------------|-----------|
+| `string` | `string` |
+| `boolean` | `bool` |
+| `integer` | `int` |
+| `long` | `long` |
+| `double` | `double` |
+| `number` | `decimal` |
+| `date` | `DateOnly` |
+| `time` | `FeelTime` |
+| `date and time` | `DateTimeOffset` |
+| `years and months duration` | `FeelYmDuration` |
+| `days and time duration` | `TimeSpan` |
+
 Besides the defined data types (also referred as "known types"), the Engine actually supports any .NET type known while evaluating the expressions, it's just not possible to explicitly define such data type for the variables in DMN Model.
 For example, let's have following model
 
@@ -335,24 +327,29 @@ When used in decision tables, the complex objects can be used as inputs as well 
 ![DMN complex objects in table](doc/img/dmn_complexObjectTable.png)
 
 ## Expressions in Decision Model ##
-As mentioned above, the Engine uses the [Dynamic Expresso](https://github.com/davideicardi/DynamicExpresso) interpreter, so the expression syntax must comply with the interpreter, on the other side, it brings quite a flexibility into the rule definition.
-- All Engine context variables are provided to the interpreter (see above)
+The Engine uses a full FEEL (Friendly Enough Expression Language) evaluator built with ANTLR4. All expressions must be valid FEEL expressions.
+- All Engine context variables are provided to the FEEL evaluation context (see above)
 - The expressions in Expression decisions are evaluated and assigned to the output variable
 - The expressions in Decision tables input parameter definitions are evaluated to get the "left side" of rule comparison (each input/column within the rule is evaluated separately)
-- The expressions in Decision table rule inputs are evaluated as the "operator and the right side" of rule comparison.
+- The expressions in Decision table rule inputs are evaluated as FEEL "simple unary tests" against the input value
 - The expressions in Decision table rule outputs are evaluated and assigned to the output variable
 
-S-FEEL expressions subset is supported for Decision table rule input conditions. S-FEEL expressions are translated to expressions using `SfeelParser`.
-- `not(expression)` - negates the condition. The `expression` can be S-FEEL expression as well
-- list of values (`expr1,expr2,exprN`) - the `expr` can be number constant, string constant (in quotation marks), variable name
+FEEL simple unary tests are supported for Decision table rule input conditions:
+- `not(expression)` - negates the condition. The `expression` can be a FEEL unary test expression as well
+- list of values (`expr1,expr2,exprN`) - the `expr` can be number constant, string constant (in quotation marks), variable name, range, or comparison
 - simple comparators - `<`,`>`,`<=`,`>=`
 - ranges - `[from..to]`. `[..]` means inclusive, `(..)` or `]..[` is exclusive. Start and end inclusive/exclusive markers can be different - for example `(..]`
+- `-` (dash) - matches any value (wildcard)
+- `null` - matches null input
 
-Some of the S-FEEL functions are injected to Dynamic Expresso interpreter as custom functions, so they can be used within the expression:
-- `date` - returns the `DateTime` from `string` in format `yyyy-MM-dd`
-- `date and time` - returns the `DateTime` from `string` in format `yyyy-MM-ddTHH:mm:sszzzzzz`, `yyyy-MM-ddTHH:mm:ss`, `yyyy-MM-ddTHH:mm`. As the function name contains spaces, it's internally translated to `date_and_time`
-- `time` - returns the `DateTime` from `string` in format `HH:mm:sszzzzzz`, `HH:mm:ss`, `HH:mm`. The date part is current date.
-- `duration` - returns the `TimeSpan` from `string` in [ISO 8601 duration format](https://en.wikipedia.org/wiki/ISO_8601#Durations)
+The following FEEL built-in functions are available in all expressions:
+- `date(string)` - returns a `DateOnly` from string in format `yyyy-MM-dd`
+- `date and time(string)` - returns a `DateTimeOffset` from string in format `yyyy-MM-ddTHH:mm:ss` (with optional timezone)
+- `time(string)` - returns a `FeelTime` from string in format `HH:mm` or `HH:mm:ss` (with optional timezone)
+- `duration(string)` - returns a `TimeSpan` (days-and-time) or `FeelYmDuration` (years-and-months) from string in [ISO 8601 duration format](https://en.wikipedia.org/wiki/ISO_8601#Durations)
+- ~80 additional built-in functions for strings, numbers, lists, dates, contexts, ranges, booleans, and conversions
+
+For backward compatibility with v1.x expressions, the FEEL evaluator also supports CLR method calls (e.g., `.ToString()`, `double.Parse()`, `Math.Abs()`).
 
 ## Expression Decisions ##
 Expression decision evaluates the expression and stores the returned value in output variable.
@@ -1057,43 +1054,13 @@ The snapshots (`DmnExecutionSnapshots`) are available from execution context (`c
 Each snapshot (`DmnExecutionSnapshot`) contains the step (sequence number), clone of all execution variables in execution context (with values corresponding to the time of snapshot creating) and `DecisionName`, `Decision` and `DecisionResult` for the snapshots created after decision execution.
 
 ### Parsed Expressions Cache ###
-The execution engine uses the [Dynamic Expresso](https://github.com/davideicardi/DynamicExpresso) for the most of it's "calculations". The expressions are processed in two steps - first, the expression is parsed (don't mismatch with parsing the model!) and second, the parsed expression is invoked. See the `DmnExecutionContext.EvalExpression` and the DynamicExpresso documentation for details.
+The execution engine uses the FEEL evaluator for expression evaluation. Expressions are processed in two steps - first, the expression is parsed into an immutable AST (Abstract Syntax Tree) and second, the AST is evaluated against the current variable values. See `DmnExecutionContext.EvalExpression` for details.
 
-Parsing the expression is time consuming operation and a lot of expressions (for example the ones in decision tables) are evaluated multiple times. For that reason, the execution context contains the cache of the parsed expressions, so it doesn't need to be parsed again when used next time.
+Parsing the expression is a time consuming operation and a lot of expressions (for example the ones in decision tables) are evaluated multiple times. For that reason, the execution context contains the cache of the parsed AST nodes (`FeelAstNode`), so the expression doesn't need to be parsed again when used next time. Since the AST is immutable and type-independent, the same cached AST works correctly with different input types and values.
 
-The cache is a dictionary of parsed expressions (`DynamicExpresso.Lambda`) - 
-` protected readonly ConcurrentDictionary<string, Lambda> ParsedExpressionsInstanceCache =new ConcurrentDictionary<string, Lambda>();` for (context) instance cache and 
-`protected static readonly ConcurrentDictionary<string, Lambda> ParsedExpressionsCache = new ConcurrentDictionary<string, Lambda>();` for (context) static cache. The context `ParsedExpressionCacheScope` option drives how the dictionary key is constructed and what cache dictionary (instance or static) is gonna be used.
+The cache is a dictionary of parsed AST nodes - an instance cache for `Execution` and `Context` scopes, and a static cache for `Definition` and `Global` scopes. The context `ParsedExpressionCacheScope` option drives how the dictionary key is constructed and what cache dictionary (instance or static) is used.
 
-```csharp
- protected virtual string GetParsedExpressionCacheKey(string executionId, string expression, Type outputType)
- {
-   string prefix;
-   switch (Options.ParsedExpressionCacheScope)
-   {
-     case ParsedExpressionCacheScopeEnum.None:
-       prefix = Guid.NewGuid().ToString(); //fallback, always unique key
-       break;
-     case ParsedExpressionCacheScopeEnum.Execution:
-       prefix = executionId;
-       break;
-     case ParsedExpressionCacheScopeEnum.Context:
-       prefix = Id;
-       break;
-     case ParsedExpressionCacheScopeEnum.Definition:
-       prefix = Definition.Id;
-       break;
-     case ParsedExpressionCacheScopeEnum.Global:
-       prefix = "";
-       break;
-     default: throw new ArgumentOutOfRangeException();
-   }
-
-   return $"{prefix}||{expression}||{outputType.AssemblyQualifiedName}";
-}
-```
-
-As you can see, the cache key is composed from the expression text, output type and the prefix depending of the `ParsedExpressionCacheScopeEnum` option.
+The cache key is composed from the expression text and the prefix depending on the `ParsedExpressionCacheScopeEnum` option (unlike v1.x, the output type is not part of the key since FEEL ASTs are type-independent).
 
  - `None` - Don't cache parsed expressions
  - `Execution` - Cache parsed expressions within the single execution run only. The (context) instance cache dictionary is used.
@@ -1115,16 +1082,12 @@ On the other hand, the static cache follows the `AppDomain` life cycle so it can
  - `public static void PurgeExpressionCacheDefinitionScopeAll()` - Purge all cached expressions belonging to any Definition scope
  - `public static void PurgeExpressionCacheGlobalScope()` - Purge all cached expressions belonging to Global scope
 
-
-### DynamoExpressions Customizations ###
-You can further customize the expression evaluations by overriding the `DmnExecutionContext.ConfigureInterpreter` and `DmnExecutionContext.SetInterpreterParameters` methods.
-
 ## DMN Engine Simulator ##
-DMN Engine Simulator is a WPF Demo application targeting .Net 6.0 (Desktop) to demonstrate features of DMN Engine.
+DMN Engine Simulator is a WPF Demo application targeting .NET 10.0 (Desktop) to demonstrate features of DMN Engine.
 
 ![DMN Simulator](doc/img/sim_main.png)
 
-The Simulator parses the DMN XML file (it uses the `DmnParser.DmnVersionEnum.V1_3ext` when reading the DMN XML files) into the DMN definition and opens a workspace for the file. There can be multiple workspaces and even the single file can be opened in multiple workspaces.
+The Simulator parses the DMN XML file (it uses auto-detection to determine the DMN version when reading the DMN XML files) into the DMN definition and opens a workspace for the file. There can be multiple workspaces and even the single file can be opened in multiple workspaces.
 
 Use the Add DMN drop down to add a DMN XML file. The drop down offers the `.dmn` files that are present in `dmn` folder of the application directory together with the (last) option to open DMN from file using the standard file open dialog.
 

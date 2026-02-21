@@ -20,6 +20,8 @@ namespace net.adamec.lib.common.dmn.engine.test
             File13,
             // ReSharper disable once InconsistentNaming
             File13ext,
+            File14,
+            File15,
             Builder
         }
 
@@ -82,7 +84,9 @@ namespace net.adamec.lib.common.dmn.engine.test
         {
             if (Source == SourceEnum.File) return File11(dmnFile);
             if (Source == SourceEnum.File13) return File13(dmnFile);
-            if (Source == SourceEnum.File13ext) return File13Ext(dmnFile); 
+            if (Source == SourceEnum.File13ext) return File13Ext(dmnFile);
+            if (Source == SourceEnum.File14) return File14(dmnFile);
+            if (Source == SourceEnum.File15) return File15(dmnFile);
 
             throw new NotImplementedException();
         }
@@ -93,6 +97,8 @@ namespace net.adamec.lib.common.dmn.engine.test
             if (source == SourceEnum.File) return File11(dmnFile);
             if (source == SourceEnum.File13) return File13(dmnFile);
             if (source == SourceEnum.File13ext) return File13Ext(dmnFile);
+            if (source == SourceEnum.File14) return File14(dmnFile);
+            if (source == SourceEnum.File15) return File15(dmnFile);
 
             throw new NotImplementedException();
         }
@@ -112,6 +118,18 @@ namespace net.adamec.lib.common.dmn.engine.test
         {
             var dir = AppDomain.CurrentDomain.BaseDirectory;
             var file = Path.Combine(dir ?? string.Empty, $"dmn/dmn1.3ext/{dmnFile}");
+            return file;
+        }
+        private static string File14(string dmnFile)
+        {
+            var dir = AppDomain.CurrentDomain.BaseDirectory;
+            var file = Path.Combine(dir ?? string.Empty, $"dmn/dmn1.4/{dmnFile}");
+            return file;
+        }
+        private static string File15(string dmnFile)
+        {
+            var dir = AppDomain.CurrentDomain.BaseDirectory;
+            var file = Path.Combine(dir ?? string.Empty, $"dmn/dmn1.5/{dmnFile}");
             return file;
         }
         // ReSharper disable once InconsistentNaming
@@ -134,6 +152,16 @@ namespace net.adamec.lib.common.dmn.engine.test
                 ParserVersion = DmnParser.DmnVersionEnum.V1_3ext;
                 return DmnParser.Parse13ext(file);
             }
+            if (Source == SourceEnum.File14)
+            {
+                ParserVersion = DmnParser.DmnVersionEnum.V1_4;
+                return DmnParser.Parse14(file);
+            }
+            if (Source == SourceEnum.File15)
+            {
+                ParserVersion = DmnParser.DmnVersionEnum.V1_5;
+                return DmnParser.Parse15(file);
+            }
 
             throw new NotImplementedException();
         }
@@ -145,6 +173,8 @@ namespace net.adamec.lib.common.dmn.engine.test
             if (source == SourceEnum.File) return DmnParser.Parse(file);
             if (source == SourceEnum.File13) return DmnParser.Parse13(file);
             if (source == SourceEnum.File13ext) return DmnParser.Parse13ext(file);
+            if (source == SourceEnum.File14) return DmnParser.Parse14(file);
+            if (source == SourceEnum.File15) return DmnParser.Parse15(file);
 
             throw new NotImplementedException();
         }

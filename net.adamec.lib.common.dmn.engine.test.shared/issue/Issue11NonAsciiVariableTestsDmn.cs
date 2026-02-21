@@ -20,7 +20,7 @@ namespace net.adamec.lib.common.dmn.engine.test.issue
         [DataRow(6, 6, false, true, 8, 0, false)]
         [DataRow(0.9, 7, false, false, 9, 1, false)]
         [DataRow(6.1, 6, false, true, 8, 0, false)]
-        [DataRow("6", 6, true, true, 8, 0, false)] //input1 will be string, so the eval will fail
+        [DataRow("6", 6, false, false, 8, 0, false)] //input1 is string, FEEL treats "6">5.1 as incomparable → false
         public void NormalizedExpressionDecisionDmnTest(object input1, int input2, bool isExecErr, bool result1, int result2, int result3, bool result4)
         {
 

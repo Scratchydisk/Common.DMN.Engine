@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using DynamicExpresso;
+using net.adamec.lib.common.dmn.engine.feel.ast;
 using FluentAssertions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using net.adamec.lib.common.dmn.engine.engine.decisions;
@@ -382,19 +382,19 @@ namespace net.adamec.lib.common.dmn.engine.test.unit
 
             ctxE.WithInputParameter("input", 1);
             ctxE.ExecuteDecision("decision3");
-            //rule 1 (use just the first tbl input): "input==1" (tbl input 1 evaluation expr.), "2" (output expression)
-            //rule 2:"input>1" (tbl input 1 evaluation expr. -> false, don't continue with further eval)
+            //rule 1 (use just the first tbl input): "UT:1" (unary test for tbl input 1), "2" (output expression)
+            //rule 2:"UT:>1" (unary test for tbl input 1 -> false, don't continue with further eval)
             ctxE.ExecutionCacheCountBeforePurge.Should().Be(3);
             ctxE.ExecutionCacheCountAfterPurge.Should().Be(0); //execution cache purged
-            ctxE.ExecutionCacheExpressions.Should().BeEquivalentTo("input==1", "2", "input>1");
+            ctxE.ExecutionCacheExpressions.Should().BeEquivalentTo("UT:1", "2", "UT:>1");
 
             ctxE.WithInputParameter("input", 2);
             ctxE.ExecuteDecision("decision3");
-            //rule 1 (use just the first tbl input): "input==1" (tbl input 1 evaluation expr. -> false, don't continue with further eval)
-            //rule 2: "input>1" (tbl input 1 evaluation expr.), "(input+3>=3 && input+3<=10)" (tbl input 2 evaluation expr.),  "input1*2" (output expression)
-            ctxE.ExecutionCacheCountBeforePurge.Should().Be(4);
+            //rule 1 (use just the first tbl input): "UT:1" (unary test for tbl input 1 -> false, don't continue with further eval)
+            //rule 2: "UT:>1" (unary test for tbl input 1), "input+3" (tbl input 2 expression evaluation), "UT:[3..10]" (unary test for tbl input 2), "input*2" (output expression)
+            ctxE.ExecutionCacheCountBeforePurge.Should().Be(5);
             ctxE.ExecutionCacheCountAfterPurge.Should().Be(0); //execution cache purged
-            ctxE.ExecutionCacheExpressions.Should().BeEquivalentTo("input==1", "input>1", "(input+3>=3 && input+3<=10)", "input*2");
+            ctxE.ExecutionCacheExpressions.Should().BeEquivalentTo("UT:1", "UT:>1", "input+3", "UT:[3..10]", "input*2");
 
             //all caches are empty here
             ctxE.ExecutionCacheCount.Should().Be(0);
@@ -412,17 +412,17 @@ namespace net.adamec.lib.common.dmn.engine.test.unit
 
             ctxC.WithInputParameter("input", 1);
             ctxC.ExecuteDecision("decision3");
-            //rule 1 (use just the first tbl input): "input==1" (tbl input 1 evaluation expr.), "2" (output expression)
-            //rule 2:"input>1" (tbl input 1 evaluation expr. -> false, don't continue with further eval)
+            //rule 1: "UT:1" (unary test for tbl input 1), "2" (output expression)
+            //rule 2: "UT:>1" (unary test for tbl input 1 -> false, don't continue with further eval)
             ctxC.ContextCacheCount.Should().Be(1 + 3); //1 "old", 3 "new"
-            ctxC.ContextCacheExpressions.Should().BeEquivalentTo("input+2", "input==1", "2", "input>1");
+            ctxC.ContextCacheExpressions.Should().BeEquivalentTo("input+2", "UT:1", "2", "UT:>1");
 
             ctxC.WithInputParameter("input", 2);
             ctxC.ExecuteDecision("decision3");
-            //rule 1 (use just the first tbl input): "input==1" (tbl input 1 evaluation expr. -> false, don't continue with further eval)
-            //rule 2: "input>1" (tbl input 1 evaluation expr.), "(input+3>=3 && input+3<=10)" (tbl input 2 evaluation expr.),  "input*2" (output expression)
-            ctxC.ContextCacheCount.Should().Be(4 + 2); //4 "old", 2 "new"
-            ctxC.ContextCacheExpressions.Should().BeEquivalentTo("input+2", "input==1", "2", "input>1", "(input+3>=3 && input+3<=10)", "input*2");
+            //rule 1: "UT:1" (cached), (-> false, don't continue with further eval)
+            //rule 2: "UT:>1" (cached), "input+3" (tbl input 2 expression evaluation), "UT:[3..10]" (unary test for tbl input 2), "input*2" (output expression)
+            ctxC.ContextCacheCount.Should().Be(4 + 3); //4 "old", 3 "new" (input+3, UT:[3..10], input*2)
+            ctxC.ContextCacheExpressions.Should().BeEquivalentTo("input+2", "UT:1", "2", "UT:>1", "input+3", "UT:[3..10]", "input*2");
 
         }
 
@@ -451,7 +451,7 @@ namespace net.adamec.lib.common.dmn.engine.test.unit
             public static int DefinitionCacheCount(string definitionId) => ParsedExpressionsCache.Keys.Count(k => k.StartsWith($"{definitionId}||"));
             public static int GlobalCacheCount => ParsedExpressionsCache.Keys.Count(k => k.StartsWith("||"));
 
-            public string[] ContextCacheExpressions => ParsedExpressionsInstanceCache.Where(i => i.Key.StartsWith($"{Id}||")).Select(i => i.Value.ExpressionText).ToArray();
+            public string[] ContextCacheExpressions => ParsedExpressionsInstanceCache.Where(i => i.Key.StartsWith($"{Id}||")).Select(i => ExtractExpressionFromCacheKey(i.Key)).ToArray();
 
             public int ExecutionCacheCountBeforePurge { get; private set; }
             public int ExecutionCacheCountAfterPurge { get; private set; }
@@ -477,13 +477,13 @@ namespace net.adamec.lib.common.dmn.engine.test.unit
                 return base.ExecuteDecision(decision);
             }
 
-            protected override bool GetParsedExpressionsFromCache(string cacheKey, out Lambda parsedExpression)
+            protected override bool GetParsedExpressionsFromCache(string cacheKey, out FeelAstNode parsedExpression)
             {
                 RetrievedFromCache = base.GetParsedExpressionsFromCache(cacheKey, out parsedExpression);
                 return RetrievedFromCache;
             }
 
-            protected override void CacheParsedExpression(string cacheKey, Lambda parsedExpression)
+            protected override void CacheParsedExpression(string cacheKey, FeelAstNode parsedExpression)
             {
                 AddedToCache = true;
                 base.CacheParsedExpression(cacheKey, parsedExpression);
@@ -492,10 +492,20 @@ namespace net.adamec.lib.common.dmn.engine.test.unit
             public override void PurgeExpressionCacheExecutionScope(string executionId)
             {
                 ExecutionCacheCountBeforePurge = ExecutionCacheCount;
-                ExecutionCacheExpressions = ParsedExpressionsInstanceCache.Where(i => !i.Key.StartsWith($"{Id}||")).Select(i => i.Value.ExpressionText).ToArray();
+                ExecutionCacheExpressions = ParsedExpressionsInstanceCache.Where(i => !i.Key.StartsWith($"{Id}||")).Select(i => ExtractExpressionFromCacheKey(i.Key)).ToArray();
 
                 base.PurgeExpressionCacheExecutionScope(executionId);
                 ExecutionCacheCountAfterPurge = ExecutionCacheCount;
+            }
+
+            /// <summary>
+            /// Extract the expression text from a cache key.
+            /// Cache key format: "{prefix}||{expression}||{outputType}"
+            /// </summary>
+            private static string ExtractExpressionFromCacheKey(string cacheKey)
+            {
+                var parts = cacheKey.Split(new[] { "||" }, StringSplitOptions.None);
+                return parts.Length >= 2 ? parts[1] : cacheKey;
             }
         }
     }

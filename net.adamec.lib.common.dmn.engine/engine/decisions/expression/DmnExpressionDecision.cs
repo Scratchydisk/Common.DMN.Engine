@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using net.adamec.lib.common.dmn.engine.engine.definition;
 using net.adamec.lib.common.dmn.engine.engine.execution.context;
 using net.adamec.lib.common.dmn.engine.engine.execution.result;
+using net.adamec.lib.common.dmn.engine.utils;
 
 namespace net.adamec.lib.common.dmn.engine.engine.decisions.expression
 {

@@ -165,11 +165,11 @@ namespace net.adamec.lib.common.dmn.engine.test.complex
         [DataRow(null, "dt2", null, null)]
 
         [DataRow(null, "dt3", "T13:00", "time(13:00)")]
-        [DataRow(null, "dt3", "2018-01-01 13:00", null)]
+        [DataRow(null, "dt3", "2018-01-01 13:00", "time(13:00)")] //v2.0: DateTimeOffset vs FeelTime compares time portions
         [DataRow(null, "dt3", "T12:00", null)]
 
-        [DataRow(null, "dt4", "2021-01-22 00:01", ">(date(2018-01-23)+duration(P3Y))")]
-        [DataRow(null, "dt4", "2021-01-22 00:00", null)]
+        [DataRow(null, "dt4", "2021-01-23 00:01", ">(date(2018-01-23)+duration(P3Y))")]
+        [DataRow(null, "dt4", "2021-01-23 00:00", null)]
 
         [DataRow(-20, "2021-01-21", "2021-01-21 00:01", ">date(str)")]
         [DataRow(-20, "2021-01-21", "2021-01-21 00:00", null)]

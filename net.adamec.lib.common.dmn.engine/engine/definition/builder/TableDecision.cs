@@ -5,6 +5,7 @@ using System.Linq;
 using net.adamec.lib.common.dmn.engine.engine.decisions;
 using net.adamec.lib.common.dmn.engine.engine.decisions.table;
 using net.adamec.lib.common.dmn.engine.parser.dto;
+using net.adamec.lib.common.dmn.engine.utils;
 
 namespace net.adamec.lib.common.dmn.engine.engine.definition.builder
 {

@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Diagnostics.CodeAnalysis;
-using net.adamec.lib.common.core.logging;
+using NLog;
 using net.adamec.lib.common.dmn.engine.engine.definition;
 using net.adamec.lib.common.dmn.engine.utils;
 
@@ -14,7 +14,7 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         /// <summary>
         /// Logger
         /// </summary>
-        protected static ILogger Logger = CommonLogging.CreateLogger<DmnExecutionVariable>();
+        protected static readonly Logger Logger = LogManager.GetCurrentClassLogger();
 
         /// <summary>
         /// Variable definition
@@ -93,9 +93,16 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
         {
             try
             {
-                _value = Type != null && value != null
-                    ? Convert.ChangeType(value, Type)
-                    : value;
+                if (Type != null && value != null)
+                {
+                    // Try FEEL type coercion first (handles decimal→int, DateOnly→DateTime, etc.)
+                    var coerced = feel.types.FeelTypeCoercion.CoerceToClr(value, Type);
+                    _value = coerced ?? Convert.ChangeType(value, Type);
+                }
+                else
+                {
+                    _value = value;
+                }
             }
             catch (Exception ex)
                 when (ex is InvalidCastException ||

@@ -46,18 +46,14 @@ namespace net.adamec.lib.common.dmn.engine.test.unit
                 .ExecuteDecision("decision2");
             result2.First["output"].Value.Should().Be(6);
 
-            //cached with 'input2+1' parsed with input2:int -> should throw
-            act = () =>
-            {
-                var ctx3 = DmnExecutionContextFactory.CreateExecutionContext(def);
-                var result3 = ctx3
-                    .WithInputParameter("input2", "6")
-                    .ExecuteDecision("decision2");
-                result3.First["output"].Value.Should().Be("61");
-            };
-            act.Should().Throw<DmnExecutorException>("Exception while invoking the expression input2+1--->System.ArgumentException: Object of type 'System.String' cannot be converted to type 'System.Int32'");
+            //FEEL AST is type-independent: cached expression works with different input types
+            var ctx3 = DmnExecutionContextFactory.CreateExecutionContext(def);
+            var result3 = ctx3
+                .WithInputParameter("input2", "6")
+                .ExecuteDecision("decision2");
+            result3.First["output"].Value.Should().Be("61");
 
-            //bypass cache -> should parse and execute with input2:string
+            //bypass cache -> should also parse and execute with input2:string
             var ctx4 = DmnExecutionContextFactory.CreateExecutionContext(def, o => o.ParsedExpressionCacheScope = ParsedExpressionCacheScopeEnum.None);
             var result4 = ctx4
                 .WithInputParameter("input2", "6")

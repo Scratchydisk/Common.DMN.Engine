@@ -38,7 +38,7 @@ namespace net.adamec.lib.common.dmn.engine.simulator.service
 
         /// <summary>
         /// Parses the DMN model from XML file with <paramref name="fileFullName"/> and creates the <see cref="DmnDefinition"/>
-        /// Only DMN XML version 1.3 is supported and DMN Parser v1_3 ext is used!!!
+        /// Automatically detects DMN version (1.1, 1.3, 1.4, 1.5) from the root element namespace.
         /// </summary>
         /// <param name="fileFullName">Full file name of DMN XML</param>
         /// <param name="error">Error message in case the method fails</param>
@@ -49,7 +49,7 @@ namespace net.adamec.lib.common.dmn.engine.simulator.service
             {
                 try
                 {
-                    var dmnModel = DmnParser.Parse13ext(fileFullName);
+                    var dmnModel = DmnParser.ParseAutoDetect(fileFullName);
                     var dmnDefinition = DmnDefinitionFactory.CreateDmnDefinition(dmnModel);
                     error = null;
                     return dmnDefinition;

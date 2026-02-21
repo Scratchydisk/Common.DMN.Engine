@@ -28,6 +28,20 @@ namespace net.adamec.lib.common.dmn.engine.parser.dto
             defaultNamespace: DmnParser.XmlNamespaceDmn13, root: new XmlRootAttribute("informationRequirement") { Namespace = DmnParser.XmlNamespaceDmn13 });
 
         /// <summary>
+        /// Serializer used for the serialization proxy class - DMN version 1.4
+        /// </summary>
+        private static readonly XmlSerializer InformationRequirementSerializableSerializer14 = new XmlSerializer(
+            typeof(InformationRequirementSerializable), null, new Type[] { },
+            defaultNamespace: DmnParser.XmlNamespaceDmn14, root: new XmlRootAttribute("informationRequirement") { Namespace = DmnParser.XmlNamespaceDmn14 });
+
+        /// <summary>
+        /// Serializer used for the serialization proxy class - DMN version 1.5
+        /// </summary>
+        private static readonly XmlSerializer InformationRequirementSerializableSerializer15 = new XmlSerializer(
+            typeof(InformationRequirementSerializable), null, new Type[] { },
+            defaultNamespace: DmnParser.XmlNamespaceDmn15, root: new XmlRootAttribute("informationRequirement") { Namespace = DmnParser.XmlNamespaceDmn15 });
+
+        /// <summary>
         /// Required input or decision reference
         /// </summary>
         public class InformationRequirementItem
@@ -111,9 +125,15 @@ namespace net.adamec.lib.common.dmn.engine.parser.dto
         {
             var r = reader.ReadSubtree();
 
-            var serializer = reader.NamespaceURI == DmnParser.XmlNamespaceDmn11
-                ? InformationRequirementSerializableSerializer
-                : InformationRequirementSerializableSerializer13;
+            XmlSerializer serializer;
+            if (reader.NamespaceURI == DmnParser.XmlNamespaceDmn11)
+                serializer = InformationRequirementSerializableSerializer;
+            else if (reader.NamespaceURI == DmnParser.XmlNamespaceDmn14)
+                serializer = InformationRequirementSerializableSerializer14;
+            else if (reader.NamespaceURI == DmnParser.XmlNamespaceDmn15)
+                serializer = InformationRequirementSerializableSerializer15;
+            else
+                serializer = InformationRequirementSerializableSerializer13;
 
             var proxy = (InformationRequirementSerializable)serializer.Deserialize(r);
             RequiredDecision = proxy.RequiredDecision;
