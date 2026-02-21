@@ -1,115 +1,20 @@
 # DMN Engine #
+DMN Engine is a rule engine allowing to execute and evaluate the decisions defined in a DMN  model. Its primary target is to evaluate the decision tables that transform the inputs into the output(s) using the decision rules. Simple expression decisions are also supported as well as the complex decision models containing set of dependent decisions (tables or expressions).
 
-A .NET rule engine that executes decisions defined in [DMN (Decision Model and Notation)](https://www.omg.org/spec/DMN/1.1/) models. It evaluates decision tables and expression decisions from OMG-standard DMN XML files, or from definitions built programmatically using a fluent API.
-
-> **This is a fork** of [adamecr/Common.DMN.Engine](https://github.com/adamecr/Common.DMN.Engine) (v1.1.1).
-> The v2.0.0 release replaces the expression evaluation engine with a full FEEL interpreter built on ANTLR4, adds DMN 1.4/1.5 support, and makes several other substantial changes.
-> The original v1.x documentation is archived in [readme-v1.md](readme-v1.md).
+The DMN Model is defined using the adopted [standard](https://www.omg.org/spec/DMN/1.1/) XML file defined by OMG (versions 1.1, 1.3, 1.4, and 1.5 are supported). Such definition can be designed for example using the [Camunda modeler](https://camunda.com/download/modeler/), keeping in mind the following principles how the file is parsed and the definition used in DMN Engine.
 
 **NuGet package ID:** net.adamec.lib.common.dmn.engine
 **Target framework:** .NET 10.0
 
 See the latest changes in [changelog](changelog.md)
 
-## What changed from the original ##
-
-| Area | Original (v1.x) | This fork (v2.0) |
-|------|-----------------|-------------------|
-| Expression evaluator | DynamicExpresso (C#-flavoured) | ANTLR4-based FEEL interpreter |
-| Expression language | S-FEEL subset + C# syntax | Full FEEL + CLR interop for backward compat |
-| DMN versions | 1.1, 1.3, 1.3ext | 1.1, 1.3, 1.3ext, **1.4, 1.5** |
-| Target framework | .NET Standard 2.0 | .NET 10.0 |
-| `date` type | `DateTime` | `DateOnly` |
-| `date and time` type | `DateTime` | `DateTimeOffset` |
-| `time` type | N/A | `FeelTime` |
-| `years and months duration` | N/A | `FeelYmDuration` |
-| Dependencies | DynamicExpresso.Core, RadCommons.core, NLog 4.x | Antlr4.Runtime.Standard, NLog 5.x |
-
-**DMN XML files are fully compatible** — the same `.dmn` files from v1.x will parse and execute. Existing S-FEEL expressions (`>5`, `[1..10]`, `not(5,7)`, `"hello"`, etc.) remain valid FEEL and evaluate identically.
-
-**C# API breaking changes** — the public API shape is largely preserved (`DmnParser`, `DmnDefinitionFactory`, `DmnExecutionContext`, `DmnDefinitionBuilder`) but there are type-level breaking changes documented in the [changelog](changelog.md).
-
-## Architecture ##
-
-### Core pipeline ###
-
-```
-DMN XML --> DmnParser --> DmnModel --> DmnDefinitionFactory --> DmnDefinition --> DmnExecutionContextFactory --> DmnExecutionContext
-                                                                                                                    |
-Code --> DmnDefinitionBuilder --> DmnDefinition ------------------------------------------------------------------>-+
-```
-
-1. **Parsing** (`parser/`): `DmnParser` deserialises DMN XML (v1.1, 1.3, 1.3ext, 1.4, 1.5) into `DmnModel` DTOs. Supports auto-detection of DMN version from XML namespace.
-2. **Definition** (`engine/definition/`): `DmnDefinitionFactory` transforms `DmnModel` into `DmnDefinition` — validation, variable type resolution, and dependency tree construction. Definitions are "virtually immutable" (exposed via read-only interfaces).
-3. **Builder** (`engine/definition/builder/`): `DmnDefinitionBuilder` provides a fluent API to create `DmnDefinition` programmatically without XML.
-4. **Decisions** (`engine/decisions/`): Two types — `DmnExpressionDecision` (single expression to output) and `DmnDecisionTable` (rules with inputs, outputs, hit policies).
-5. **Execution** (`engine/execution/`): `DmnExecutionContext` manages variables, resolves decision dependencies recursively, evaluates expressions via the FEEL evaluator, and returns `DmnDecisionResult`.
-
-### FEEL evaluator pipeline ###
-
-```
-FEEL expression string
-  --> FeelLexer.g4 --> Token stream
-  --> FeelNameResolver --> Merged tokens (multi-word names resolved)
-  --> FeelParser.g4 --> Parse tree
-  --> FeelAstBuilder --> FeelAstNode (AST)
-  --> FeelEvaluator --> Result value
-```
-
-- **Grammar** (`feel/grammar/`): `FeelLexer.g4` and `FeelParser.g4` — ANTLR4 grammars compiled at build time via `Antlr4BuildTasks`
-- **Parsing** (`feel/parsing/`):
-  - `FeelScope` — registry of known variable and function names for scope-aware parsing
-  - `FeelNameResolver` — post-lexer token stream rewriter that merges adjacent name tokens into multi-word identifiers (FEEL allows spaces in names)
-  - `FeelAstBuilder` — ANTLR visitor that converts parse tree to AST nodes
-- **AST** (`feel/ast/`): `FeelAstNode` hierarchy — literals, operators, control flow, collections, functions, unary tests
-- **Evaluation** (`feel/eval/`):
-  - `FeelEvaluationContext` — variable scope chain with nested context support
-  - `FeelEvaluator` — tree-walking interpreter with FEEL three-valued logic and null propagation
-- **Functions** (`feel/functions/`): `FeelBuiltInFunctions` — ~80 built-in FEEL functions (string, numeric, list, date/time, context, range, boolean, conversion)
-- **Types** (`feel/types/`): `FeelTime`, `FeelYmDuration`, `FeelRange`, `FeelContext`, `FeelFunction`, `FeelTypeCoercion`, `FeelValueComparer`
-- **Facade** (`feel/FeelEngine.cs`): Public API — `EvaluateExpression()`, `EvaluateSimpleUnaryTests()`, `ParseExpression()`, `ParseSimpleUnaryTests()`
-
-### FEEL type mappings ###
-
-| FEEL Type | .NET Type |
-|-----------|-----------|
-| `number` | `decimal` |
-| `string` | `string` |
-| `boolean` | `bool` |
-| `date` | `DateOnly` |
-| `time` | `FeelTime` |
-| `date and time` | `DateTimeOffset` |
-| `years and months duration` | `FeelYmDuration` |
-| `days and time duration` | `TimeSpan` |
-| `list` | `List<object>` |
-| `context` | `FeelContext` |
-| `range` | `FeelRange` |
-| `function` | `FeelFunction` |
-
-### Key design patterns ###
-
-- **Virtual immutability**: Definitions are effectively immutable after creation (hidden behind read-only interfaces like `IDmnVariable`, `IDmnDefinition`). Safe for concurrent access.
-- **Factory pattern**: `DmnDefinitionFactory` and `DmnExecutionContextFactory` are the primary creation points. `DmnDefinitionFactory` has virtual protected methods for subclassing.
-- **Expression caching**: Parsed FEEL AST nodes (`FeelAstNode`) are cached with configurable scope (None, Execution, Context, Definition, Global) via `ParsedExpressionCacheScopeEnum`. AST nodes are immutable and thread-safe.
-- **CLR interop**: The FEEL evaluator supports CLR instance method calls (e.g., `.ToString()`) and static method calls (e.g., `double.Parse()`, `Math.Abs()`) for backward compatibility with v1.x expressions.
-
-### Decision table hit policies ###
-
-Unique, First, Priority, Any, Collect (with aggregations: List, Sum, Min, Max, Count), RuleOrder, OutputOrder.
-
-### Dependencies ###
-
-- **Antlr4.Runtime.Standard** 4.13.1 — ANTLR4 runtime for FEEL parser
-- **Antlr4BuildTasks** 12.8 — Build-time grammar compilation (private asset)
-- **NLog** 5.3.4 — Logging
-
-## Quick start ##
-
+### Quick start ###
 The basic use case is:
 1. Parse the DMN model from file.
 2. Create an engine execution context and load (and validate) the model into engine context.
 3. Provide the input parameter(s).
 4. Execute (and evaluate) the decision and get the result(s).
+
 
 ```csharp
 var def = DmnParser.Parse(fileName);
@@ -136,7 +41,7 @@ Provide the execution context with input parameters using `WithInputParameter` o
 *Note: The DMN definition is designed to be "virtually immutable" once created allowing the execution context (execution engine) to reference the definition and its parts without a need to take into a consideration the potential changes in the definition. The meaning of "virtually immutable" is that for sake of simplicity, sometimes the immutability is achieved just by using the read only interface (for example `IReadOnlyDictionary` hiding some of the methods of `Dictionary` or `IDmnVariable` hiding the methods of `DmnVariableDefinition`).*
 
 ### Build ###
-The library uses the customised MS Build process in projects `build` and `build.tasks`. It's safe to remove such projects from solution if needed.
+The library uses the customized MS Build process in projects `build` and `build.tasks`. It's safe to remove such projects from solution if needed.
 Details about the build process are described in [build documentation](build/readme.md).
 
 ### Tests ###
@@ -153,11 +58,11 @@ The test classes for DMN 1.3 inherits from "primary" test class and override the
 
 The builder based definition tests are prepared similar way - inherit from "primary" test class and set the `Source` to used the builders. `DmnBuilderSamples` class is generated from DMN XML files to provide the same decision model (DMN definition) but using the builders (Note: it might be useful to check this class to have a quick look how the builders work).
 
-*Note: I use the test cases also to demonstrate some edge-case or less intuitive behaviour, so they can be used also as a study material (tried to explain it in comments in test if needed).*
+*Note: I use the test cases also to demonstrate some edge-case or less intuitive behavior, so they can be used also as a study material (tried to explain it in comments in test if needed).*
 
 
 ### Code Documentation ###
-The [code documentation](doc/net.adamec.lib.common.dmn.engine.md) is generated during the customised build using [MarkupDoc](https://github.com/adamecr/MarkupDoc).
+The [code documentation](doc/net.adamec.lib.common.dmn.engine.md) is generated during the customized build using [MarkupDoc](https://github.com/adamecr/MarkupDoc).
 
 
 ## DMN Decision Model ##
@@ -165,7 +70,7 @@ The DMN Model is actually set of inputs (parameters) and decisions.
 
 ![DMN diagram](doc/img/dmn_diagram.png)
 
-The DMN Model XML is parsed (deserialised) using the `DmnParser.Parse` method getting the `fileName` as input parameter and returning the `DmnModel` (deserialised XML) based on such decisions model XML definition. The DmnParser contains a very simple logic only, as its intention is just to deserialise the XML.
+The DMN Model XML is parsed (deserialized) using the `DmnParser.Parse` method getting the `fileName` as input parameter and returning the `DmnModel` (deserialized XML) based on such decisions model XML definition. The DmnParser contains a very simple logic only, as its intention is just to deserialize the XML.
 ```csharp
 model = DmnParser.Parse(fileName);
 ```
@@ -174,7 +79,7 @@ The XML model definition can also be provided as a `string` to `DmnParser.ParseS
 ```csharp
 model = DmnParser.ParseString("xml string");
 ```
-`DmnParser` uses the DMN XML v 1.1 by default. It can be overridden using the optional parameter `dmnVersion` when calling the parser. It can contain value `V1_1` (default), `V1_3`, `V1_3ext`, `V1_4` or `V1_5`. The values are defined in `DmnVersionEnum`. Alternative way is to call version-specific methods such as `DmnParser.Parse13(fileName)`, `DmnParser.Parse14(fileName)`, `DmnParser.Parse15(fileName)` and their `ParseString` variants. The recommended approach is to use `DmnParser.ParseAutoDetect(fileName)` which automatically detects the DMN version from the XML namespace.
+`DmnParser` uses the DMN XML v 1.1 by default. It can be overridden using the optional parameter `dmnVersion` when calling the parser. It can contain value `V1_1` (default), `V1_3`, `V1_3ext`, `V1_4` or `V1_5`. The values are defined in `DmnVersionEnum`. Alternative way is to call version-specific methods such as `DmnParser.Parse13(fileName)`, `DmnParser.Parse14(fileName)`, `DmnParser.Parse15(fileName)` and their `ParseString` variants. The recommended approach is to use `DmnParser.ParseAutoDetect(fileName)` which automatically detects the DMN version from the XML namespace.  
 
 The `DmnModel` needs to be transformed to the `DmnDefinition` using the `DmnDefinitionFactory` that gets the DMN Model and executes "second level parsing" to prepare the DMN Model for the Engine. The most of the "parsing" and validation logic is here. `DmnDefinition` is then used to create the `DmnExecutionContext` allowing the execution/evaluation of the decisions based on the parameters provided.
 
@@ -205,21 +110,21 @@ var ctx = DmnExecutionContextFactory.CreateExecutionContext(definition);
 ### Inputs ###
 ![DMN input](doc/img/dmn_input.png) Input represents an external data entering the Engine while evaluating the decision. You can think about it as it's the parameter of the decision to be made.
 
-The input is defined in XML file using the `inputData` element and recognised by its unique `Name` taken from `name` attribute (or from `id` attribute when the `name` attribute is missing. The `id` attribute is mandatory).
+The input is defined in XML file using the `inputData` element and recognized by its unique `Name` taken from `name` attribute (or from `id` attribute when the `name` attribute is missing. The `id` attribute is mandatory). 
 
 ```xml
 <definitions>
   <inputData id="InputData_1upwrsh" name="Age" />
 </definitions>
 ```
-The parser creates the variable used in the Engine context allowing the Engine to access the input parameter. The variable is created with flag `IsInputParameter`, meaning that the Engine will not allow writing the values into such variable (inputs are immutable). The variable names are being normalised (see later), so it's necessary to keep it in into the consideration when designing the decisions (normalised name needs to be used there). Besides the `Name` as the unique identifier of input (variable), the non-normalised name as taken from XML is stored in `Label` property for the information.
+The parser creates the variable used in the Engine context allowing the Engine to access the input parameter. The variable is created with flag `IsInputParameter`, meaning that the Engine will not allow writing the values into such variable (inputs are immutable). The variable names are being normalized (see later), so it's necessary to keep it in into the consideration when designing the decisions (normalized name needs to be used there). Besides the `Name` as the unique identifier of input (variable), the non-normalized name as taken from XML is stored in `Label` property for the information.
 
 The input (parameter) is to be set to the Engine context before evaluating the decision. If not set, its value will be `null`, which might be OK in case the model takes this into the consideration.
-*Note: The value type variables without value are translated to default value, so for example `int` variable will not be `null` but will be set to `0` when the first expression is evaluated (even if the variable is not used in there!).*
+*Note: The value type variables without value are translated to default value, so for example `int` variable will not be `null` but will be set to `0` when the first expression is evaluated (even if the variable is not used in there!).*    
 ```csharp
 ctx.WithInputParameter("input name", inputValue);
-```
-*Note: Inputs by default don't define the data type. The parser tries to recognise the type when "back-tracking" the dependency tree from Decision Table inputs that can define the data type.*
+``` 
+*Note: Inputs by default don't define the data type. The parser tries to recognize the type when "back-tracking" the dependency tree from Decision Table inputs that can define the data type.*
 
 When using the builder, it provides several overloads of `WithInput` method allowing to define the inputs that can be used in the decisions. The overloads with `label` parameter are also available.
 
@@ -234,13 +139,13 @@ var def = new DmnDefinitionBuilder()
   .Build();
 ```
 
-Although the builder also allows to create the input without specifying the variable type (as in XML), it's recommended to always use the typed inputs within the builders to prevent some potentially unexpected behaviour during the execution.
+Although the builder also allows to create the input without specifying the variable type (as in XML), it's recommended to always use the typed inputs within the builders to prevent some potentially unexpected behavior during the execution.
 
 
 ### Decisions ###
 ![DMN decision](doc/img/dmn_decision.png) Decision represents an entity the Engine can evaluate and provide the required output(s).
 
-The decision is defined in XML file using the `decision` element and recognised by its unique `Name` taken from `name` attribute (or from `id` attribute when the `name` attribute is missing. The `id` attribute is mandatory). The `Label` for decision is the same as `Name` when parsing from XML.
+The decision is defined in XML file using the `decision` element and recognized by its unique `Name` taken from `name` attribute (or from `id` attribute when the `name` attribute is missing. The `id` attribute is mandatory). The `Label` for decision is the same as `Name` when parsing from XML.
 
 ```xml
 <definitions>
@@ -257,7 +162,7 @@ result = ctx.ExecuteDecision("decision name");
 ```
 The Engine supports the following decision types
 - ![DMN expression decision](doc/img/dmn_decision_expression.png) Expression Decisions that evaluate the defined expression and output the result into defined output variable
-- ![DMN decision table](doc/img/dmn_decision_table.png) Decision Tables that evaluate set of decision rules and provide matching output(s)
+- ![DMN decision table](doc/img/dmn_decision_table.png) Decision Tables that evaluate set of decision rules and provide matching output(s) 
 
 The builder provides two methods `WithExpressionDecision` and `WithTableDecision` to define the decisions. We will get to the details in the chapters related to expression decisions and decision tables. Optional label can be defined using the overloads.
 
@@ -286,7 +191,7 @@ When the model is parsed, the parser builds the dependency tree based on the inf
 
 Required inputs actually don't define the "hard dependency", meaning they are not checked during the execution for the existence of value (not being null). Definition of the required inputs is rather to describe the connection between the input and the decision for the information or better understanding of the whole decision model
 
-The dependency is stored in XML within the `informationRequirement` element that can be `requiredInput` or `requiredDecision`. Both types must have the `href` attribute referencing the proper input or decision by their id (with "#" prefix).
+The dependency is stored in XML within the `informationRequirement` element that can be `requiredInput` or `requiredDecision`. Both types must have the `href` attribute referencing the proper input or decision by their id (with "#" prefix). 
 *Note: Exactly one of the sub elements (`requiredDecision` or `requiredInput`) must be present within the `informationRequirement` element.*
 ```xml
 <decision id="mainDt" name="MainDT">
@@ -303,7 +208,7 @@ The dependency is stored in XML within the `informationRequirement` element that
 <inputData id="InputData_1" name="Age">
 </inputData>
 ```
-In the Engine version <1.1, the `DmnDefinitionFactory` did the recursive check through required decision when processing the required inputs for a particular decision in XML. The generated decision definition contained not only directly required inputs but also all inputs required by the decisions in the dependency tree. **This behaviour has been changed in version 1.1** (and above), when the `DmnDecision.RequiredInputs` contains only the directly required inputs - the same way as in XML.
+In the Engine version <1.1, the `DmnDefinitionFactory` did the recursive check through required decision when processing the required inputs for a particular decision in XML. The generated decision definition contained not only directly required inputs but also all inputs required by the decisions in the dependency tree. **This behavior has been changed in version 1.1** (and above), when the `DmnDecision.RequiredInputs` contains only the directly required inputs - the same way as in XML. 
 
 *Note: This applies only when parsing the DMN from XML, the builders didn't implement the recursive check even in early versions.*
 
@@ -357,21 +262,18 @@ The FEEL evaluator supports:
 - Built-in FEEL functions (~80 functions for strings, numbers, lists, dates, contexts, ranges)
 - `if`/`then`/`else`, `for`/`in`/`return`, `some`/`every` quantifiers
 - List operations with 1-based indexing, filters, and paths
-- Context expressions and nested context access
-- Range types with `contains()` semantics
-- Function definitions, named parameter invocation
 - CLR method interop (`.ToString()`, `double.Parse()`, etc.) for backward compatibility with v1.x expressions
 
 The Engine context keeps the list of variables as triplets:
-- `Name` - name of the variable that is used as a reference as well as the name of the variable for the expression interpreter.
-- `Type` - the variable values are stored within the Engine context as `object`, however, it provides some support for the data types. It's possible to define the data type in some parts of model - output variable for the expression decision, inputs and outputs for decision tables. The XML parser sets the type of variable at the first place where known and then checks that the data type is the same if set somewhere else. The definition builder for variable requires the type to be specified. When the variable value is set during the execution and the type is known, the Engine tries to cast (`Convert.ChangeType(value, Type)`) the value to required type.
+- `Name` - name of the variable that is used as a reference as well as the name of the variable for the expression interpreter. 
+- `Type` - the variable values are stored within the Engine context as `object`, however, it provides some support for the data types. It's possible to define the data type in some parts of model - output variable for the expression decision, inputs and outputs for decision tables. The XML parser sets the type of variable at the first place where known and then checks that the data type is the same if set somwhere else. The definition builder for variable requires the type to be specified. When the variable value is set during the execution and the type is known, the Engine tries to cast (`Convert.ChangeType(value, Type)`) the value to required type. 
 - `Value` - current value of the variable. When provided to the expression interpreter, the value type (non-nullable) variables are set to default value of the value type when the current value stored within the context is null
 
 When using the DMN XML, the variables are defined during the processing the XML based on:
  - Decision model inputs
  - Output variables for expression decisions
  - Inputs of decision tables bound to variable
- - Outputs variables for decision tables
+ - Outputs variables for decision tables 
 
 When using the builders, the variables must be explicitly defined. When the variable is to be used in builder, get the variable reference from the variable builder and use it in other builders.
 
@@ -382,12 +284,12 @@ var def = new DmnDefinitionBuilder()
   .Build();
 ```
 
-*Note: The expressions are not parsed/analysed when the definition is being prepared, so there is no kind of detection/validation of the variables within the expressions*
+*Note: The expressions are not parsed/analyzed when the definition is being prepared, so there is no kind of detection/validation of the variables within the expressions*
 
 ### Variable Names ###
-The names of the variables can contain the letters (`char.IsLetter()`), digits (`char.IsDigit()`) and underscore (`_`). The first character must be a letter or underscore.
+The names of the variables can contain the letters (`char.IsLetter()`), digits (`char.IsDigit()`) and underscore (`_`). The first character must be a letter or undercore. 
 
-As it's quite common (although not recommended) to use the space in the variable names, the variable names are "normalised" - the trailing spaces are removed and the inner spaces and dashes are replaced by underscore (`name.Trim().Replace(' ', '_').Replace('-', '_')`). Also the characters `?#$%&*()` are being removed from the name during the normalisation. This is to keep the variable name "compact" when used in expressions (either implicit ones used when evaluating the decision table rules or explicit ones defined in the DMN definition). This is important to be kept in mind when designing the definition - for example when there will be a variable `Some Variable_1  with spaces ? `, it must be referred as `Some_Variable_1__with_spaces` within the expressions. The normalisation might also cause the unintentional duplicity if not taken into the consideration - for example variables `A B` and `A_B` will be duplicates as the first one will be normalised to `A_B`.
+As it's quite common (although not recommended) to use the space in the variable names, the variable names are "normalized" - the trailing spaces are removed and the inner spaces and dashes are replaced by underscore (`name.Trim().Replace(' ', '_').Replace('-', '_')`). Also the characters `?#$%&*()` are being removed from the name during the normalization. This is to keep the variable name "compact" when used in expressions (either implicit ones used when evaluating the decision table rules or explicit ones defined in the DMN definition). This is important to be kept in mind when designing the definition - for example when there will be a variable `Some Variable_1  with spaces ? `, it must be referred as `Some_Variable_1__with_spaces` within the expressions. The normalization might also cause the unintentional duplicity if not taken into the consideration - for example variables `A B` and `A_B` will be duplicates as the first one will be normalized to `A_B`.
 
 As the input names are used for backing variables, the above mentioned applies for the DMN input names as well.
 
@@ -455,7 +357,7 @@ Expression decision evaluates the expression and stores the returned value in ou
 
 The expression is in `text` element of the `literalExpression` child of the `decision` element in DMN XML.
 The output variable is identified by `name` (or `id` if `name` is missing) attribute. The data type is defined in `typeRef` attribute and is used to specify/cross-check the variable data type (casting is not supported).
-
+  
 ```xml
   <decision id="D1" name="IsOk">
     <variable id="var1" name="b" typeRef="boolean" />
@@ -518,7 +420,7 @@ var expressionDecisionDefinition5 = new DmnDefinitionBuilder()
 Decision table defines the set of rules - "when the input values matches all input conditions, provide defined outputs".
 ![DMN decision table parts](doc/img/dmn_table_parts.png)
 Input and output definitions (declarations) are common for all rules and define the columns used in decision table.
-**Decision table input** means that there will be an input data of given type that are to be evaluated using the rule input expression. Decision table input also defines, where to get the input data - from variable (variable input) or by evaluating the expression (expression input).
+**Decision table input** means that there will be an input data of given type that are to be evaluated using the rule input expression. Decision table input also defines, where to get the input data - from variable (variable input) or by evaluating the expression (expression input). 
 *Note:The expression input expressions are evaluated for each rule.*
 There are three table inputs in the example above:
 - Variable input mapped to variable `a` of type `string`
@@ -530,7 +432,7 @@ There are two table outputs in the example above:
 - Output mapped to variable `res` of type `string`
 - Output mapped to variable `amount` of type `integer`
 
-*Note: The mapping to the variables (persistence) is done after all rules are evaluated and the single or multiple rules with positive match are selected by Hit policy. Although it's possible to manipulate the output mapped variables within the rule expression, it's strongly recommended not to do so.*
+*Note: The mapping to the variables (persistence) is done after all rules are evaluated and the single or multiple rules with positive match are selected by Hit policy. Although it's possible to manipulate the output mapped variables within the rule expression, it's strongly recommended not to do so.* 
 
 **Rule** is the set of input and output expressions.
 The **Rule input expression** defines kind of condition that the input data must meet to make the rule the positive match. It's possible to omit the rule input expression, meaning that the related table input will not be evaluated for such rule.
@@ -544,8 +446,8 @@ There will be following conditions used when evaluating the decision table above
   - `b==false` - value of bool variable `b` is `false`
   - `dyna.Direct=="over"` - result of expression `dyna.Direct` is the constant `over`
 
-Actually, it's possible to omit all input expressions, so the rule will be always evaluated as positive match.
-
+Actually, it's possible to omit all input expressions, so the rule will be always evaluated as positive match. 
+ 
 The **Rule output expression** defines the data that the Engine will store to defined output variables (and return). It's always handled as the expression even if returning the constant.
 There are following outputs for the rules of the decision table above
 
@@ -554,7 +456,7 @@ There are following outputs for the rules of the decision table above
   - `50` - integer constant `50` will be store to variable `amount`.
 - Rule 2 - will produce following output
   - `"dyna.Direct==over"` - string constant `dyna.Direct==over` will be stored to variable `res`.
-
+  
 It's possible to omit one or more (all) output expressions. In this case the Engine will just not produce the output value (so the output variable will NOT be "cleaned" or set to `null`).
 
 ### Inputs in XML ###
@@ -562,14 +464,14 @@ There is a **significant change in the parser version 1_3ext** (and above for fu
 
 Besides the mapping of table input to the variable or expression described in following chapters, there is also a `Label` of table input (used for information only, labels are not used at all during the execution).
  - When the `label` attribute of input is set, the `Label` is taken from there
- - Otherwise, when the input is mapped to a variable, the `Label` is set from the "source" of the variable name (without normalisation)
+ - Otherwise, when the input is mapped to a variable, the `Label` is set from the "source" of the variable name (without normalization)
  - Otherwise the default label `Input#n` is used where `n` is the order of input (1-based)
 
 
 #### Parser version 1_3ext (and above) ####
 There can be different ways how the table inputs are defined in the XML definition
-```xml
-<decisionTable>
+```xml    
+<decisionTable> 
   <input id="InputClause1" label="a" camunda:inputVariable="a">
     <inputExpression id="e1" typeRef="string" />
   </input>
@@ -595,18 +497,18 @@ There can be different ways how the table inputs are defined in the XML definiti
   <input id="a" label="">
     <inputExpression id="e6" typeRef="string" />
   </input>
-
+  
 </decisionTable>
 ```
 The mapping and processing logic is following:
  - When there is an attribute `camunda:inputVariable`, the table input takes the value from variable. When such variable doesn't exist, the exception is thrown
  - Otherwise, when the expression text is defined
-   - When the expression text after normalisation corresponds with an existing variable, the table input takes the value from such variable
+   - When the expression text after normalization corresponds with an existing variable, the table input takes the value from such variable
    - Otherwise, the table input is evaluated using the expression as defined in expression text
  - Otherwise, when the `label` attribute is defined
-   - When the `label` after normalisation corresponds with an existing variable, the table input takes the value from such variable
+   - When the `label` after normalization corresponds with an existing variable, the table input takes the value from such variable
    - Otherwise, the table input is evaluated using the expression as defined `label` attribute
- - Otherwise, when the `id` attribute after normalisation corresponds with an existing variable, the table input takes the value from such variable
+ - Otherwise, when the `id` attribute after normalization corresponds with an existing variable, the table input takes the value from such variable
  - Otherwise the parser exception is thrown.
 
 
@@ -614,7 +516,7 @@ When the mapping leads to a variable, the data type defined in `typeRef` attribu
 
 #### Parser version 1_3 and 1_1 ####
 Let's have following inputs in the XML definition
-```xml
+```xml    
 <decisionTable>
   <input id="InputClause1" label="a">
     <inputExpression id="e1" typeRef="string" />
@@ -658,7 +560,7 @@ var definition = new DmnDefinitionBuilder()
 ### Outputs in XML ###
 There is also a **change in the parser version 1_3ext** (and above for future) **and parser version 1_3** (and 1_1) **how the XML attributes are mapped to variable name**,so **keep the parser version in mind, when design the DMN XML model**.
 
-```xml
+```xml  
 <decisionTable>
   <output id="output_1" label="res" name="var" typeRef="string" />
   <output id="output_2" label="res" name="" typeRef="string" />
@@ -669,7 +571,7 @@ There is also a **change in the parser version 1_3ext** (and above for future) *
 The output definition in XML always maps to a variable. It can either be an existing one or a new one that will be created. Data type is defined in `typeRef` attribute and is used to specify/cross-check the variable data type (casting is not supported).
 
 - Parser version 1_3ext (and above): The name of the output variable is taken from the attribute `name` (if set) or from `label` if `name` is missing or from `id` when also `label` is missing.
-- Parser version 1_3 and 1_1 : The name of the output variable is taken from the attribute `label` (if set) or from `name` if `label` is missing or from `id` when also `name` is missing.
+- Parser version 1_3 and 1_1 : The name of the output variable is taken from the attribute `label` (if set) or from `name` if `label` is missing or from `id` when also `name` is missing. 
 
 Besides the mapping of table output to the variable also a `Label` of table output (used for information only, labels are not used at all during the execution).
  - When the `label` attribute of output is set, the `Label` is taken from there
@@ -700,7 +602,7 @@ var definition = new DmnDefinitionBuilder()
 
 ### Rules in XML ###
 The decision table in the example above will have following rules in the XML definition
-```xml
+```xml  
 <decisionTable>
   <rule id="row1">
     <description>some rule</description>
@@ -714,7 +616,7 @@ The decision table in the example above will have following rules in the XML def
     <inputEntry id="id3">
       <text><![CDATA[not("over")]]></text>
     </inputEntry>
-
+    
     <outputEntry id="id4">
       <text><![CDATA[a+(b!=null?b.ToString():"")+dyna.Direct]]></text>
     </outputEntry>
@@ -733,7 +635,7 @@ The decision table in the example above will have following rules in the XML def
     <inputEntry id="id8">
       <text><![CDATA["over"]]></text>
     </inputEntry>
-
+  
     <outputEntry id="id9">
       <text><![CDATA["dyna.Direct==over"]]></text>
     </outputEntry>
@@ -747,7 +649,7 @@ The rule input expressions are defined using the `inputEntry` elements. **Their 
 
 The rule output expressions are defined using the `outputEntry` elements. **Their count and order must match the table output definitions** (there is no other way of pairing). The `text` sub-element of `outputEntry` defines the rule output expression. If the `text` element is empty or contains constant `-` (dash) the output will be omitted (not produced) during the decision table evaluation.
 
-The optional rule annotation is stored in element `description`.
+The optional rule annotation is stored in element `description`. 
 
 ### Rules in Builder ###
 `TableDecision` builder provides method `WithRule` for table rule definition. It takes a mandatory table-unique rule name and optional description and provides the rule builder to define the input conditions and output calculations.
@@ -778,7 +680,7 @@ var definition = new DmnDefinitionBuilder()
        .WithOutput(outputVar1Ref, out var tableOutput1Ref)
        .WithOutput(outputVar2Ref, out var tableOutput2Ref)
        .WithOutput(outputVar3Ref, out var tableOutput3Ref)
-
+       
        .WithRule("rule1", r => r
           .When(tableInput1Ref, "1")
           .Then(tableOutput1Ref, "\"a\""))
@@ -830,7 +732,7 @@ var definition = new DmnDefinitionBuilder()
 #### S-FEEL Expressions Helper ####
 The struct `SFeel` is a helper for composing the SFeel input expressions provided to `When` and input `And` methods of the rule builders as an alternative to raw string expressions. It ****helps with the syntax, but don't check for semantics****, so it's still necessary to understand how to compose the valid expressions.
 
-The expressions within helper are built from tokens, operations and functions reflecting the syntax of S-FEEL expressions as described above. The following sample demonstrates using the helper in the rule builder instead of providing the expressions as strings:
+The expressions within helper are built from tokens, operations and functions reflecting the syntax of S-FEEL expressions as described above. The folowing sample demonstrates using the helper in the rule builder instead of providing the expressions as strings:
 
 ```csharp
 var def = new DmnDefinitionBuilder()
@@ -861,8 +763,8 @@ var def = new DmnDefinitionBuilder()
   .Build();
 ```
 
-Single tokens are the constants or variable references - for example `SFeel.Eq("A")` encapsulates a string token `"A"` (quotation marks are the part of the token/expression), `SFeel.Eq(1)` encapsulates the integer token `1` and `SFeel.Eq(varRef)` represents the token for the variable reference (`varRef` is of type `Variable.Ref`) that will render as variable name into the expression. `Eq` is the operation representing equality check and as this is the default one, the `==` is not used in input expressions, so the above mentioned samples will generate expressions `"A"`, `1` and `variableName`.
-It's also possible to provide the token sets within the rule expressions like `1,2,3`, in such case simply use `SFeel.Eq(1,2,3)` or even for combined sets like `2,[5..10],variable1` use `SFeel.Eq(2,SFeel.RngI(5,10),variable1Ref)`.
+Single tokens are the constants or variable references - for example `SFeel.Eq("A")` encapsulates a string token `"A"` (quotation marks are the part of the token/expression), `SFeel.Eq(1)` encapsulates the integer token `1` and `SFeel.Eq(varRef)` represents the token for the variable reference (`varRef` is of type `Variable.Ref`) that will render as variable name into the expression. `Eq` is the operation representing equality check and as this is the default one, the `==` is not used in input expressions, so the above mentioned samples will generate expressions `"A"`, `1` and `variableName`. 
+It's also possible to provide the token sets within the rule expressions like `1,2,3`, in such case simply use `SFeel.Eq(1,2,3)` or even for combined sets like `2,[5..10],variable1` use `SFeel.Eq(2,SFeel.RngI(5,10),variable1Ref)`. 
 
 The previous sample introduced `RngI(from,to)` function representing range `[from..to]`. Similar way `RngE(from,to)` generates the range excluding the opening and closing values `]from..to[` and functions `RngIE` and `RngEI` generate the ranges `[from..to[` and `]from..to]`.
 
@@ -901,7 +803,7 @@ var r11 = SFeel.Eq(SFeel.RngIE(2, 5));
 var r12 = SFeel.Eq(SFeel.RngEI(2, 5));
 //]2..5[
 var r13 = SFeel.Eq(SFeel.RngE(2, 5));
-
+            
 //not(6)
 var r14 = SFeel.Not(6);
 //not("b","c","q","o","r","s","v")
@@ -914,12 +816,12 @@ var r17 = SFeel.Not(SFeel.Gt(4));
 var r18 = SFeel.Not(SFeel.RngI(2, 5));
 //not(]2..5[)
 var r19 = SFeel.Not(SFeel.RngE(2, 5));
-
+           
 //4,[6..9[,11
 var r20 = SFeel.Eq(4, SFeel.RngIE(6, 9), 11);
 //not(4,[6..9[,11)
 var r21 = SFeel.Not(4, SFeel.RngIE(6, 9), 11);
-
+           
 //< date("2018-01-23")
 var r22 = SFeel.Lt(SFeel.Date(new DateTime(2018, 01, 23)));
 //not(> date("2018-01-23"))
@@ -950,7 +852,7 @@ var r32 = SFeel.Eq(SFeel.Duration((dt.AddMonths(3).AddDays(2))-dt));
 var r33 = SFeel.Eq(SFeel.Duration(5,6,7));
 //duration("-P6M7DT9M10S")
 var r34 = SFeel.Eq(SFeel.Duration(0, 6, 7,0,9,10,true));
-
+            
 //>= (date("2018-01-23") + duration("P3Y"))
 var r35 = SFeel.Ge(SFeel.Expr($"({SFeel.Date(2018, 01, 23)} + {SFeel.Duration(3, 0, 0,0,0)})"));
 ```
@@ -966,7 +868,7 @@ The output allowed values are checked when processing the rules with positive hi
 
 
 The DMN XML defines the constraints as optional `inputValues` or `outputValues` child elements for input/output.
-```xml
+```xml  
 <decisionTable>
   <input id="InputClause1" label="a">
     <inputExpression id="e1" typeRef="string" />
@@ -1022,8 +924,8 @@ Following multiple-hit policies are supported
 	- COUNT aggregator for string stores the counted value (number) as a string into the output variable
 	- Boolean output values are valid for SUM, MIN and MAX aggregator
 		- SUM and MAX return true if there is at lease one true result
-		- MIN returns false if there is at least one false result.
-
+		- MIN returns false if there is at least one false result. 
+	
 
 - **RuleOrder** - Multiple rules can be satisfied. The decision table result contains the output of all satisfied rules in the order of the rules in the decision table.
 - **OutputOrder** - Returns all hits in decreasing output priority order. Output priorities are specified in the ordered list of output values in decreasing order of priority
@@ -1031,7 +933,7 @@ Following multiple-hit policies are supported
 *Note: The multiple-hit policy decision table returns full set of outputs, however the output variables are set to the values corresponding to the **last** (ordered) positive rule. Take this into the consideration when mapping the output of the multiple-hit policy decision table as the input for another decision*
 
 Decision tables with compound outputs support only the following hit policies: Unique, Any, Priority, First, Output order, Rule order and Collect without operator, because the collect operator is undefined over multiple outputs.
-
+ 
 For the Priority and Output order hit policies, priority is decided in compound output tables over all the outputs for which output values have been provided.The priority for each output is specified in the ordered list of output values in decreasing order of priority, and the overall priority is established by considering the ordered outputs from left to right. Outputs for which no output values are provided are not taken into account in the ordering, although their output entries are included in the ordered compound output.
 
 DMN XML defines the hit policy and aggregation at the attributes of `decisionTable`.
@@ -1083,13 +985,13 @@ DMN definition elements implementing `IDmnExtendable` - definition, decision and
 
 The following helper methods are available for `IDmnExtendable`
 
- - `public static TExtension[] GetExtensions<TExtension>(this IDmnExtendable element)` - Return all extensions of type `TExtension` from element or empty array when no such extension is found.
+ - `public static TExtension[] GetExtensions<TExtension>(this IDmnExtendable element)` - Return all extensions of type `TExtension` from element or empty array when no such extension is found.        
  - `public static TExtension GetExtension<TExtension>(this IDmnExtendable element)` - Returns the first extension of type `TExtension` from element or default value of `TExtension`
  - `public static bool HasExtension<TExtension>(this IDmnExtendable element)` - Returns `true` when element has an extension of type `TExtension`.
  - `public static void AddExtension(this IDmnExtendable element, object extension)` - Adds extension to element.
 
 ### Diagram Extensions ###
-The parser V1_3 and above supports the `DiDiagramShapeExtension` and `DiDiagramExtension`. The shape Extension contains the boundaries of the element within the DMN diagram (X,Y,Width and Height'. The Extension is added by `DmnDefinitionFactory` to `DmnDecision` and `DmnVariableDefinition` when the DMN XML contains the `DMNShape` element with `Bounds` that is linked via `dmnElementRef` to the decision or information requirement - input.
+The parser V1_3 and above supports the `DiDiagramShapeExtension` and `DiDiagramExtension`. The shape Extension contains the boundaries of the element within the DMN diagram (X,Y,Width and Height'. The Extension is added by `DmnDefinitionFactory` to `DmnDecision` and `DmnVariableDefinition` when the DMN XML contains the `DMNShape` element with `Bounds` that is linked via `dmnElementRef` to the decision or information requirement - input. 
 
 When there is at least one shape, the `DmnDefinition` contains the `DiDiagramExtension` encapsulating the dictionary of pairs element-shape extension clone, so it's also possible to get the shape data from a "central" point
 
@@ -1118,10 +1020,10 @@ The Diagram Extensions are used by DMN Simulator when rendering the DMN graph (d
 As mentioned above, the basic execution flow is to create the execution context from `DmnDefinition` or `DmnModel` using the `DmnExecutionContextFactory.CreateExecutionContext`, set input parameters using `WithInputParameter` or `WithInputParameters` methods of context and call `DmnContext.ExecuteDecision` method to get the `DmnDecisionResult`. The execution context can be provided with optional options configuration actions (see the next chapter).
 
 The above mentioned using of the factory is recommended, however, if needed, it's possible to use the `DmnExecutionContext` constructor directly, giving it the DMN definition, execution variables dictionary (by name) and decisions dictionary (by name). When using the constructor directly (or inheriting from `DmnExecutionContext`), keep this in mind:
-
+ 
  - DMN definition is not really used for the execution (except the definition ID for caching - see later), it's just a convenient way how to keep the reference to the "full" model
- - The variables are to be unique per context and these are the runtime variables (`DmnExecutionVariable`) based on the variables from definition. However, it's possible to extend the set of variables (and even provide them with values) for the advanced scenarios - i can imagine for example having the custom variables (inheriting from `DmnExecutionVariable`) with advanced type handling or with "externalised" persistence allowing to retrieve or store the data from different sources.
- - As the decisions dictionary can be simply built from the decisions in the DMN definition, it's possible to narrow the decisions available for the execution by name by filtering the definition decisions.
+ - The variables are to be unique per context and these are the runtime variables (`DmnExecutionVariable`) based on the variables from definition. However, it's possible to extend the set of variables (and even provide them with values) for the advanced scenarios - i can imagine for example having the custom variables (inheriting from `DmnExecutionVariable`) with advanced type handling or with "externalized" persistence allowing to retrieve or store the data from different sources. 
+ - As the decisions dictionary can be simply built from the decisions in the DMN definition, it's possible to narrow the decisions available for the execution by name by filtering the definition decisions. 
 
 *Note: When executing the decision by name, it's checked against the dictionary provided to the constructor, however, when execution the decision "directly" (with `IDmnDecision` parameter), it's not cross checked neither against the decisions dictionary nor the definition. The same applies for the dependencies when the decision requires another decision. So constructing the context or model the wrong way, might lead to unexpected results.*
 
@@ -1200,7 +1102,7 @@ The term *Graph* is used intentionally as it doesn't really depict the full DMN 
 
 ![DMN Simulator Definition Graph](doc/img/sim_definition_graph.png)
 
-The [GraphShape](https://github.com/KeRNeLith/GraphShape) library is used for the visualisation (also the `zoomcontrol` and configuration fly-out is reused with some minor changes from its demo application). The key addition to the out of the box GraphShape is a custom *DmnDi* layout algorithm that layouts the graph vertices (inputs and decisions) using the DMNDI (DMN Diagram) information from DMN XML (vertices without the related shape in DMNDI are positioned like a tiles within the boundary specified in *DmnDi* layout algorithm parameters). When any of inputs or decisions has the shape Extension, *DmnDi* algorithm is used by default, otherwise the *Tree* algorithm is used to layout the vertices within the graph.
+The [GraphShape](https://github.com/KeRNeLith/GraphShape) library is used for the visualization (also the `zoomcontrol` and configuration fly-out is reused with some minor changes from its demo application). The key addition to the ouot of the box GraphShape is a custom *DmnDi* layout algorithm that layouts the graph vertices (inputs and decisions) using the DMNDI (DMN Diagram) information from DMN XML (vertices without the related shape in DMNDI are positioned like a tiles within the boundary specified in *DmnDi* layout algorithm parameters). When any of inputs or decisions has the shape Extension, *DmnDi* algorithm is used by default, otherwise the *Tree* algorithm is used to layout the vertices within the graph.
 
 The other tabs provides the very basic information about *Decisions*, *Inputs* and *Variables* (actually the inputs are just a subset of variables).
 ![DMN Simulator Definition Tabs](doc/img/sim_definition_tabs.png)
@@ -1215,7 +1117,7 @@ The detail panel just presents the design of selected decision - table or expres
 ### Execute ###
 The Simulator allows to try the decision with different inputs and see the execution results. To execute the decision simply choose the decision to execute, fill the inputs as needed (can be null, meaning the input value is not provided to execution context) and click to *Execute* button.
 
-The specialised controls are used to enter the values of known types recognised by parser. When the type is not identified by parser from the definition (or it's identified but not as the know type), the entry is via text field and the combo box is provided to let the user choose a know type to which the raw value should be converted before passing to the execution context as the input parameter.
+The specialized controls are used to enter the values of known types recognized by parser. When the type is not identified by parser from the definition (or it's identified but not as the know type), the entry is via text field and the combo box is provided to let the user choose a know type to which the raw value should be converted before passing to the execution context as the input parameter.
 
 ![DMN Simulator Execute](doc/img/sim_execute.png)
 

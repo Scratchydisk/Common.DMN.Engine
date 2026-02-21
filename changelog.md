@@ -3,7 +3,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [2.0.0] - 2026-02-19 ##
-This is a major release. It's recommended to go through the [documentation](readme.md) for full details.
+**This is a fork** of [adamecr/Common.DMN.Engine](https://github.com/adamecr/Common.DMN.Engine) (v1.1.1). The v2.0.0 release replaces the expression evaluation engine and makes several other substantial changes, making this a divergent fork rather than a drop-in upgrade. The original v1.x documentation is archived in [readme-v1.md](readme-v1.md). It's recommended to go through the [updated documentation](readme.md) for full details.
+
+### Fork summary ###
+- The expression evaluator has been completely replaced — DynamicExpresso removed in favour of a custom ANTLR4-based FEEL interpreter
+- Three dependencies removed (`DynamicExpresso.Core`, `RadCommons.core`, multi-framework support), two added (`Antlr4.Runtime.Standard`, `Antlr4BuildTasks`)
+- Target framework narrowed from .NET Standard 2.0 to .NET 10.0
+- New FEEL-specific types introduced (`FeelTime`, `FeelYmDuration`, `FeelRange`, `FeelContext`, `FeelFunction`)
+- DMN XML compatibility is preserved — existing DMN files parse identically, and S-FEEL expressions remain valid FEEL
+- The C# API shape is largely preserved (`DmnParser`, `DmnDefinitionFactory`, `DmnExecutionContext`, `DmnDefinitionBuilder`) but has breaking changes at the type level (see below)
 
 ### Breaking changes ###
 - **Target framework changed from .NET Standard 2.0 to .NET 10.0** — the library no longer supports .NET Framework or older .NET Core runtimes
@@ -165,7 +173,7 @@ As this is a major update, it's recommended to go through the [documentation](re
 ### Added ###
 - Initial release
 
-[2.0.0]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.1.1...v2.0.0
+[2.0.0]: https://github.com/Scratchydisk/Common.DMN.Engine/compare/v1.1.1...v2.0.0
 [1.1.1]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.0.0...v1.0.1
