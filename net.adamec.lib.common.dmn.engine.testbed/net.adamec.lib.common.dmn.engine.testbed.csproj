@@ -10,4 +10,21 @@
     <ProjectReference Include="..\net.adamec.lib.common.dmn.engine\net.adamec.lib.common.dmn.engine.csproj" />
   </ItemGroup>
 
+  <!-- Exclude Nuxt build artifacts from the Web SDK's default content globbing -->
+  <ItemGroup>
+    <Content Remove="client/**" />
+  </ItemGroup>
+
+  <!-- Build the Nuxt client into wwwroot/ before the .NET build -->
+  <Target Name="BuildClient" BeforeTargets="BeforeBuild" Condition="!Exists('wwwroot/index.html')">
+    <Message Importance="high" Text="Installing client dependencies..." />
+    <Exec Command="npm install" WorkingDirectory="client" />
+    <Message Importance="high" Text="Building client (nuxt generate)..." />
+    <Exec Command="npm run generate" WorkingDirectory="client" />
+    <ItemGroup>
+      <ClientOutputFiles Include="client/.output/public/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(ClientOutputFiles)" DestinationFolder="wwwroot/%(RecursiveDir)" />
+  </Target>
+
 </Project>

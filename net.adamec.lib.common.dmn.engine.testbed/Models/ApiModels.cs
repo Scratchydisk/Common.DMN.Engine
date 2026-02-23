@@ -32,6 +32,7 @@ public class DecisionInfo
     public List<TableColumnInfo> TableOutputs { get; set; } = [];
     public List<string> RequiredDecisions { get; set; } = [];
     public List<string> RequiredInputs { get; set; } = [];
+    public List<string> AllRequiredInputs { get; set; } = [];
     public string Expression { get; set; }
 }
 

@@ -67,7 +67,19 @@
 
     <!-- Section D: Quick Test Form -->
     <div class="quick-test-section" v-if="selectedDecision">
-      <h2 class="section-title">Quick Test</h2>
+      <div class="section-title-row">
+        <h2 class="section-title">Quick Test</h2>
+        <div v-if="hasUpstream" class="test-mode-toggle">
+          <label class="toggle-option" :class="{ active: testMode === 'tree' }">
+            <input type="radio" name="test-mode" value="tree" v-model="testMode" />
+            Full DRD
+          </label>
+          <label class="toggle-option" :class="{ active: testMode === 'isolated' }">
+            <input type="radio" name="test-mode" value="isolated" v-model="testMode" />
+            Isolated
+          </label>
+        </div>
+      </div>
       <div class="quick-test-form">
         <div class="form-columns">
           <!-- Inputs Column -->
@@ -86,15 +98,20 @@
                   <option value="">-- select --</option>
                   <option v-for="val in col.allowedValues" :key="val" :value="val">{{ val }}</option>
                 </select>
-                <!-- Checkbox for boolean -->
-                <div v-else-if="col.typeName === 'boolean'" class="checkbox-field">
-                  <input
-                    :id="`input-${col.name}`"
-                    type="checkbox"
-                    v-model="inputValues[col.name]"
-                    class="field-checkbox"
-                  />
-                  <span class="checkbox-label">{{ inputValues[col.name] ? 'true' : 'false' }}</span>
+                <!-- Radio buttons for boolean -->
+                <div v-else-if="col.typeName === 'boolean'" class="radio-group">
+                  <label class="radio-option">
+                    <input type="radio" :name="`input-${col.name}`" :value="true" v-model="inputValues[col.name]" />
+                    <span>True</span>
+                  </label>
+                  <label class="radio-option">
+                    <input type="radio" :name="`input-${col.name}`" :value="false" v-model="inputValues[col.name]" />
+                    <span>False</span>
+                  </label>
+                  <label class="radio-option">
+                    <input type="radio" :name="`input-${col.name}`" value="" v-model="inputValues[col.name]" />
+                    <span class="radio-unset">Unset</span>
+                  </label>
                 </div>
                 <!-- Number input -->
                 <input
@@ -127,10 +144,34 @@
               </div>
               <!-- Also show general input data variables not covered by table inputs -->
               <div v-for="v in extraInputs" :key="v.name" class="form-field">
-                <label :for="`input-${v.name}`">{{ v.label || v.name }}</label>
-                <div v-if="v.typeName === 'boolean'" class="checkbox-field">
-                  <input :id="`input-${v.name}`" type="checkbox" v-model="inputValues[v.name]" class="field-checkbox" />
-                  <span class="checkbox-label">{{ inputValues[v.name] ? 'true' : 'false' }}</span>
+                <label :for="`input-${v.name}`">
+                  {{ v.label || v.name }}
+                  <span v-if="v.isDecisionOutput" class="decision-output-badge" :title="`Output of ${v.sourceDecision}`">{{ v.sourceDecision }}</span>
+                  <span v-else-if="v.isUpstream && v.sourceDecisions" class="upstream-badge" :title="`Input to ${v.sourceDecisions.join(', ')}`">{{ v.sourceDecisions.join(', ') }}</span>
+                  <span v-else-if="v.isUpstream" class="upstream-badge">upstream</span>
+                </label>
+                <select
+                  v-if="v.allowedValues && v.allowedValues.length > 0"
+                  :id="`input-${v.name}`"
+                  v-model="inputValues[v.name]"
+                  class="field-input"
+                >
+                  <option value="">-- select --</option>
+                  <option v-for="val in v.allowedValues" :key="val" :value="val">{{ val }}</option>
+                </select>
+                <div v-else-if="v.typeName === 'boolean'" class="radio-group">
+                  <label class="radio-option">
+                    <input type="radio" :name="`input-${v.name}`" :value="true" v-model="inputValues[v.name]" />
+                    <span>True</span>
+                  </label>
+                  <label class="radio-option">
+                    <input type="radio" :name="`input-${v.name}`" :value="false" v-model="inputValues[v.name]" />
+                    <span>False</span>
+                  </label>
+                  <label class="radio-option">
+                    <input type="radio" :name="`input-${v.name}`" value="" v-model="inputValues[v.name]" />
+                    <span class="radio-unset">Unset</span>
+                  </label>
                 </div>
                 <input
                   v-else-if="isNumericType(v.typeName)"
@@ -140,6 +181,13 @@
                   class="field-input"
                   step="any"
                   :placeholder="v.typeName || 'number'"
+                />
+                <input
+                  v-else-if="v.typeName === 'date'"
+                  :id="`input-${v.name}`"
+                  type="date"
+                  v-model="inputValues[v.name]"
+                  class="field-input"
                 />
                 <input
                   v-else
@@ -160,49 +208,73 @@
           <!-- Expected Outputs Column -->
           <div class="form-column">
             <h3 class="column-title">Expected Outputs</h3>
-            <div class="field-list">
-              <div v-for="col in formOutputs" :key="col.name" class="form-field">
-                <label :for="`output-${col.name}`">{{ col.label || col.name }}</label>
-                <select
-                  v-if="col.allowedValues && col.allowedValues.length > 0"
-                  :id="`output-${col.name}`"
-                  v-model="expectedOutputs[col.name]"
-                  class="field-input"
-                >
-                  <option value="">-- any --</option>
-                  <option v-for="val in col.allowedValues" :key="val" :value="val">{{ val }}</option>
-                </select>
-                <div v-else-if="col.typeName === 'boolean'" class="checkbox-field">
-                  <input
-                    :id="`output-${col.name}`"
-                    type="checkbox"
-                    v-model="expectedOutputs[col.name]"
-                    class="field-checkbox"
-                  />
-                  <span class="checkbox-label">{{ expectedOutputs[col.name] ? 'true' : 'false' }}</span>
+            <div v-for="group in groupedOutputs" :key="group.decisionName" class="output-group">
+              <div v-if="groupedOutputs.length > 1" class="output-group-header" :class="{ 'is-upstream': !group.isSelected }">
+                {{ group.decisionName }}
+              </div>
+              <div class="field-list">
+                <div v-for="col in group.outputs" :key="col.name" class="form-field">
+                  <label :for="`output-${col.name}`">{{ col.label || col.name }}</label>
+                  <!-- Pass-through: this output is set by an upstream decision -->
+                  <template v-if="group.isSelected && passThroughOutputs[col.name]">
+                    <input
+                      :id="`output-${col.name}`"
+                      type="text"
+                      :value="expectedOutputs[col.name] || ''"
+                      class="field-input field-readonly"
+                      readonly
+                      tabindex="-1"
+                    />
+                    <span class="field-passthrough-hint">Set by {{ passThroughOutputs[col.name] }} below</span>
+                  </template>
+                  <template v-else>
+                    <select
+                      v-if="col.allowedValues && col.allowedValues.length > 0"
+                      :id="`output-${col.name}`"
+                      v-model="expectedOutputs[col.name]"
+                      class="field-input"
+                    >
+                      <option value="">-- any --</option>
+                      <option v-for="val in col.allowedValues" :key="val" :value="val">{{ val }}</option>
+                    </select>
+                    <div v-else-if="col.typeName === 'boolean'" class="radio-group">
+                      <label class="radio-option">
+                        <input type="radio" :name="`output-${col.name}`" :value="true" v-model="expectedOutputs[col.name]" />
+                        <span>True</span>
+                      </label>
+                      <label class="radio-option">
+                        <input type="radio" :name="`output-${col.name}`" :value="false" v-model="expectedOutputs[col.name]" />
+                        <span>False</span>
+                      </label>
+                      <label class="radio-option">
+                        <input type="radio" :name="`output-${col.name}`" value="" v-model="expectedOutputs[col.name]" />
+                        <span class="radio-unset">Any</span>
+                      </label>
+                    </div>
+                    <input
+                      v-else-if="isNumericType(col.typeName)"
+                      :id="`output-${col.name}`"
+                      type="number"
+                      v-model.number="expectedOutputs[col.name]"
+                      class="field-input"
+                      step="any"
+                      placeholder="expected value (optional)"
+                    />
+                    <input
+                      v-else
+                      :id="`output-${col.name}`"
+                      type="text"
+                      v-model="expectedOutputs[col.name]"
+                      class="field-input"
+                      placeholder="expected value (optional)"
+                    />
+                    <span class="field-type">{{ col.typeName }}</span>
+                  </template>
                 </div>
-                <input
-                  v-else-if="isNumericType(col.typeName)"
-                  :id="`output-${col.name}`"
-                  type="number"
-                  v-model.number="expectedOutputs[col.name]"
-                  class="field-input"
-                  step="any"
-                  placeholder="expected value (optional)"
-                />
-                <input
-                  v-else
-                  :id="`output-${col.name}`"
-                  type="text"
-                  v-model="expectedOutputs[col.name]"
-                  class="field-input"
-                  placeholder="expected value (optional)"
-                />
-                <span class="field-type">{{ col.typeName }}</span>
               </div>
-              <div v-if="formOutputs.length === 0" class="no-fields">
-                No outputs defined for this decision.
-              </div>
+            </div>
+            <div v-if="groupedOutputs.length === 0" class="no-fields">
+              No outputs defined for this decision.
             </div>
             <p class="output-hint">Leave blank to see actual result only.</p>
           </div>
@@ -215,6 +287,9 @@
           </button>
           <button class="btn btn-save" @click="openSaveDialog" :disabled="!hasAnyInput">
             Save as Test Case
+          </button>
+          <button v-if="activeTestCaseId" class="btn btn-update" @click="updateTestCase" :disabled="!hasAnyInput">
+            Update Test Case
           </button>
           <button class="btn btn-clear" @click="clearForm">
             Clear
@@ -233,20 +308,23 @@
             <span class="timing">{{ lastResult.executionTimeMs }}ms</span>
           </div>
 
-          <div v-for="(sr, idx) in lastResult.results" :key="idx" class="result-row">
+          <div v-for="group in groupedResults" :key="group.decisionName" class="result-decision-group">
+            <div v-if="groupedResults.length > 1" class="result-group-header" :class="{ 'is-upstream': !group.isSelected }">
+              {{ group.decisionName }}
+            </div>
             <div class="result-outputs">
-              <div v-for="(out, outName) in sr.outputs" :key="outName" class="output-item">
-                <span class="output-name">{{ outName }}</span>
-                <span class="output-value" :class="getOutputClass(outName, out.value)">{{ formatValue(out.value) }}</span>
+              <div v-for="out in group.outputs" :key="out.name" class="output-item">
+                <span class="output-name">{{ out.name }}</span>
+                <span class="output-value" :class="getOutputClass(out.name, out.value)">{{ formatValue(out.value) }}</span>
                 <span class="output-type">{{ out.typeName }}</span>
-                <span v-if="expectedOutputs[outName] !== '' && expectedOutputs[outName] != null" class="match-indicator" :class="valuesMatch(expectedOutputs[outName], out.value) ? 'match' : 'mismatch'">
-                  {{ valuesMatch(expectedOutputs[outName], out.value) ? 'PASS' : 'FAIL' }}
+                <span v-if="expectedOutputs[out.name] !== '' && expectedOutputs[out.name] != null" class="match-indicator" :class="valuesMatch(expectedOutputs[out.name], out.value) ? 'match' : 'mismatch'">
+                  {{ valuesMatch(expectedOutputs[out.name], out.value) ? 'PASS' : 'FAIL' }}
                 </span>
               </div>
             </div>
-            <div v-if="sr.hitRules?.length" class="hit-rules">
+            <div v-if="group.hitRules?.length" class="hit-rules">
               <span class="hit-label">Hit rules:</span>
-              <span v-for="hr in sr.hitRules" :key="hr.index" class="hit-rule">
+              <span v-for="hr in group.hitRules" :key="hr.index" class="hit-rule">
                 #{{ hr.index + 1 }}<template v-if="hr.name"> ({{ hr.name }})</template>
               </span>
             </div>
@@ -431,6 +509,9 @@ const testCases = ref([])
 const activeTestCaseId = ref(null)
 const runningAll = ref(false)
 
+// Test mode: 'tree' = full DRD (only leaf inputs), 'isolated' = selected decision only (upstream outputs as inputs)
+const testMode = ref('tree')
+
 // Computed
 const selectedDecision = computed(() => {
   if (!selectedDecisionName.value || !definitionInfo.value) return null
@@ -440,29 +521,272 @@ const selectedDecision = computed(() => {
 const formInputs = computed(() => {
   if (!selectedDecision.value) return []
   if (selectedDecision.value.type === 'table') {
-    return selectedDecision.value.tableInputs || []
+    const inputs = selectedDecision.value.tableInputs || []
+    // In tree mode, exclude table input columns that are upstream decision outputs (they're computed)
+    if (testMode.value === 'tree') {
+      const upstreamOutputs = upstreamOutputNames.value
+      return inputs.filter(col => !upstreamOutputs.has(col.name))
+    }
+    // In isolated mode, also exclude them from here - they show in extraInputs with a badge
+    const upstreamOutputs = upstreamOutputNames.value
+    return inputs.filter(col => !upstreamOutputs.has(col.name))
   }
   return []
 })
 
 const formOutputs = computed(() => {
   if (!selectedDecision.value) return []
-  if (selectedDecision.value.type === 'table') {
-    return selectedDecision.value.tableOutputs || []
-  }
-  return []
+  return selectedDecision.value.tableOutputs || []
 })
 
+// Output variables in the selected decision that are just pass-throughs from upstream decisions
+// Map: variable name -> upstream decision name that is the source
+const passThroughOutputs = computed(() => {
+  if (!selectedDecision.value || !definitionInfo.value || testMode.value !== 'tree') return {}
+  const ownOutputNames = new Set((selectedDecision.value.tableOutputs || []).map(o => o.name))
+  const map = {}
+  const decisionsByName = {}
+  for (const d of (definitionInfo.value.decisions || [])) {
+    decisionsByName[d.name] = d
+  }
+  const visited = new Set()
+  function collect(decisionName) {
+    if (visited.has(decisionName)) return
+    visited.add(decisionName)
+    const d = decisionsByName[decisionName]
+    if (!d) return
+    for (const o of (d.tableOutputs || [])) {
+      if (o.name && ownOutputNames.has(o.name)) {
+        map[o.name] = decisionName
+      }
+    }
+    for (const rd of (d.requiredDecisions || [])) {
+      collect(rd)
+    }
+  }
+  for (const rd of (selectedDecision.value.requiredDecisions || [])) {
+    collect(rd)
+  }
+  return map
+})
+
+// Grouped outputs: selected decision first, then each upstream decision's outputs
+const groupedOutputs = computed(() => {
+  if (!selectedDecision.value || !definitionInfo.value) return []
+  const groups = []
+
+  // Selected decision's own outputs
+  const ownOutputs = selectedDecision.value.tableOutputs || []
+  if (ownOutputs.length > 0) {
+    groups.push({ decisionName: selectedDecision.value.name, outputs: ownOutputs, isSelected: true })
+  }
+
+  // In tree mode, also show upstream decision outputs
+  if (testMode.value === 'tree' && hasUpstream.value) {
+    const decisionsByName = {}
+    for (const d of (definitionInfo.value.decisions || [])) {
+      decisionsByName[d.name] = d
+    }
+    // Walk required decisions in execution order (deepest first, matching step order)
+    const visited = new Set()
+    const upstreamDecisions = []
+    function collectOrdered(decisionName) {
+      if (visited.has(decisionName)) return
+      visited.add(decisionName)
+      const d = decisionsByName[decisionName]
+      if (!d) return
+      // Recurse into dependencies first (depth-first)
+      for (const rd of (d.requiredDecisions || [])) {
+        collectOrdered(rd)
+      }
+      upstreamDecisions.push(d)
+    }
+    for (const rd of (selectedDecision.value.requiredDecisions || [])) {
+      collectOrdered(rd)
+    }
+
+    for (const d of upstreamDecisions) {
+      const outputs = d.tableOutputs || []
+      if (outputs.length > 0) {
+        groups.push({ decisionName: d.name, outputs, isSelected: false })
+      }
+    }
+  }
+
+  return groups
+})
+
+// Build a mapping from output variable name -> source decision name using execution steps
+function buildOutputSourceMap(steps) {
+  const map = {}
+  if (!steps) return map
+  for (const step of steps) {
+    for (const varName of Object.keys(step.variableChanges || {})) {
+      map[varName] = step.decisionName
+    }
+  }
+  return map
+}
+
+// Group flat result outputs by source decision
+const groupedResults = computed(() => {
+  if (!lastResult.value?.hasResult || !lastResult.value.results?.length) return []
+  const sourceMap = buildOutputSourceMap(lastResult.value.steps)
+  const sr = lastResult.value.results[0] // primary result
+  if (!sr?.outputs) return []
+
+  // Group outputs by decision name
+  const groupMap = new Map()
+  for (const [outName, outVal] of Object.entries(sr.outputs)) {
+    const decisionName = sourceMap[outName] || selectedDecisionName.value
+    if (!groupMap.has(decisionName)) {
+      groupMap.set(decisionName, { decisionName, outputs: [], hitRules: [], isSelected: decisionName === selectedDecisionName.value })
+    }
+    groupMap.get(decisionName).outputs.push({ name: outName, ...outVal })
+  }
+
+  // Attach hit rules from steps to their decision group
+  for (const step of (lastResult.value.steps || [])) {
+    const group = groupMap.get(step.decisionName)
+    if (group && step.hitRules?.length) {
+      group.hitRules = step.hitRules
+    }
+  }
+
+  // Selected decision first, then upstream in execution order
+  const selected = groupMap.get(selectedDecisionName.value)
+  const upstream = [...groupMap.entries()]
+    .filter(([name]) => name !== selectedDecisionName.value)
+    .map(([, g]) => g)
+  return [...(selected ? [selected] : []), ...upstream]
+})
+
+// Whether the selected decision has upstream dependencies
+const hasUpstream = computed(() => {
+  return (selectedDecision.value?.requiredDecisions?.length || 0) > 0
+})
+
+// Collect all upstream decision output variable names (transitively) for the selected decision
+const upstreamOutputNames = computed(() => {
+  if (!selectedDecision.value || !definitionInfo.value) return new Set()
+  const decisionsByName = {}
+  for (const d of (definitionInfo.value.decisions || [])) {
+    decisionsByName[d.name] = d
+  }
+  const outputs = new Set()
+  const visited = new Set()
+  function collect(decisionName) {
+    if (visited.has(decisionName)) return
+    visited.add(decisionName)
+    const d = decisionsByName[decisionName]
+    if (!d) return
+    for (const o of (d.tableOutputs || [])) {
+      if (o.name) outputs.add(o.name)
+    }
+    for (const rd of (d.requiredDecisions || [])) {
+      collect(rd)
+    }
+  }
+  // Start from the selected decision's required decisions (not the selected decision itself)
+  for (const rd of (selectedDecision.value.requiredDecisions || [])) {
+    collect(rd)
+  }
+  return outputs
+})
+
+// Build info for an upstream output variable (for isolated mode display)
+const upstreamOutputInfoMap = computed(() => {
+  if (!definitionInfo.value) return {}
+  const map = {}
+  for (const d of (definitionInfo.value.decisions || [])) {
+    for (const o of (d.tableOutputs || [])) {
+      if (o.name && !map[o.name]) {
+        map[o.name] = { name: o.name, label: o.label, typeName: o.typeName, allowedValues: o.allowedValues || null, sourceDecision: d.name }
+      }
+    }
+  }
+  return map
+})
+
+// Build a union of allowed values for each variable name across all decision table inputs
+function getAllowedValuesForInput(inputName) {
+  if (!definitionInfo.value) return null
+  const values = new Set()
+  for (const decision of (definitionInfo.value.decisions || [])) {
+    for (const tableInput of (decision.tableInputs || [])) {
+      if (tableInput.name === inputName && tableInput.allowedValues?.length) {
+        tableInput.allowedValues.forEach(v => values.add(v))
+      }
+    }
+  }
+  return values.size > 0 ? Array.from(values).sort() : null
+}
+
+// Map input variable name -> list of upstream decision names that use it as a table input
+function getSourceDecisions(inputName) {
+  if (!definitionInfo.value || !selectedDecision.value) return null
+  const upstreamNames = new Set()
+  const decisionsByName = {}
+  for (const d of (definitionInfo.value.decisions || [])) {
+    decisionsByName[d.name] = d
+  }
+  const visited = new Set()
+  function collect(dn) {
+    if (visited.has(dn)) return
+    visited.add(dn)
+    const d = decisionsByName[dn]
+    if (!d) return
+    // Check if this decision uses the input
+    const usesInput = (d.tableInputs || []).some(i => i.name === inputName)
+      || (d.requiredInputs || []).includes(inputName)
+    if (usesInput) upstreamNames.add(dn)
+    for (const rd of (d.requiredDecisions || [])) collect(rd)
+  }
+  for (const rd of (selectedDecision.value.requiredDecisions || [])) collect(rd)
+  return upstreamNames.size > 0 ? [...upstreamNames] : null
+}
+
 // Input data variables required by this decision but not covered by table inputs
+// In 'tree' mode: transitive leaf inputs only (upstream decision outputs excluded everywhere)
+// In 'isolated' mode: direct requiredInputs + upstream decision outputs (at the bottom with badge)
 const extraInputs = computed(() => {
   if (!selectedDecision.value || !definitionInfo.value) return []
   const tableInputNames = new Set((selectedDecision.value.tableInputs || []).map(i => i.name))
-  return (selectedDecision.value.requiredInputs || [])
-    .filter(name => !tableInputNames.has(name))
-    .map(name => {
-      const v = definitionInfo.value.inputData.find(i => i.name === name)
-      return v || { name, typeName: null }
-    })
+  const directInputNames = new Set(selectedDecision.value.requiredInputs || [])
+  const upstreamOutputs = upstreamOutputNames.value
+
+  if (testMode.value === 'tree') {
+    // Show transitive leaf inputs, exclude upstream decision outputs
+    return (selectedDecision.value.allRequiredInputs || [])
+      .filter(name => !tableInputNames.has(name) && !upstreamOutputs.has(name))
+      .map(name => {
+        const v = definitionInfo.value.inputData.find(i => i.name === name)
+        const info = v || { name, typeName: null }
+        const allowedValues = getAllowedValuesForInput(name)
+        const isUpstream = !directInputNames.has(name)
+        const sourceDecisions = isUpstream ? getSourceDecisions(name) : null
+        return { ...info, isUpstream, sourceDecisions, allowedValues }
+      })
+  } else {
+    // Isolated mode: direct required inputs that aren't table inputs or upstream outputs
+    const directInputs = (selectedDecision.value.requiredInputs || [])
+      .filter(name => !tableInputNames.has(name) && !upstreamOutputs.has(name))
+      .map(name => {
+        const v = definitionInfo.value.inputData.find(i => i.name === name)
+        const info = v || { name, typeName: null }
+        const allowedValues = getAllowedValuesForInput(name)
+        return { ...info, isUpstream: false, isDecisionOutput: false, allowedValues }
+      })
+    // Then upstream decision output variables that feed into this decision's table inputs
+    const upstreamVars = [...upstreamOutputs]
+      .filter(name => tableInputNames.has(name) || directInputNames.has(name))
+      .map(name => {
+        const info = upstreamOutputInfoMap.value[name] || { name, typeName: null }
+        const allowedValues = info.allowedValues?.length ? info.allowedValues : getAllowedValuesForInput(name)
+        return { ...info, isUpstream: true, isDecisionOutput: true, sourceDecision: info.sourceDecision, allowedValues }
+      })
+    return [...directInputs, ...upstreamVars]
+  }
 })
 
 const hasAnyInput = computed(() => {
@@ -588,20 +912,18 @@ function initFormFields() {
   const outputs = {}
 
   if (selectedDecision.value) {
-    // Table inputs
-    for (const col of (selectedDecision.value.tableInputs || [])) {
-      inputs[col.name] = col.typeName === 'boolean' ? false : ''
+    // Initialize from visible form inputs and extra inputs
+    for (const col of formInputs.value) {
+      inputs[col.name] = ''
     }
-    // Extra required inputs
-    for (const name of (selectedDecision.value.requiredInputs || [])) {
-      if (!(name in inputs)) {
-        const v = definitionInfo.value?.inputData.find(i => i.name === name)
-        inputs[name] = v?.typeName === 'boolean' ? false : ''
+    for (const v of extraInputs.value) {
+      inputs[v.name] = ''
+    }
+    // All grouped outputs (selected + upstream)
+    for (const group of groupedOutputs.value) {
+      for (const col of group.outputs) {
+        outputs[col.name] = ''
       }
-    }
-    // Table outputs
-    for (const col of (selectedDecision.value.tableOutputs || [])) {
-      outputs[col.name] = ''
     }
   }
 
@@ -625,10 +947,14 @@ async function executeDecision() {
   highlightedRules.value = []
 
   try {
-    // Build clean inputs (skip empty strings)
+    // Build clean inputs - only send variables that are visible in the current form
+    const visibleInputNames = new Set([
+      ...formInputs.value.map(i => i.name),
+      ...extraInputs.value.map(i => i.name)
+    ])
     const cleanInputs = {}
     for (const [k, v] of Object.entries(inputValues.value)) {
-      if (v !== '' && v !== null && v !== undefined) {
+      if (v !== '' && v !== null && v !== undefined && visibleInputNames.has(k)) {
         cleanInputs[k] = v
       }
     }
@@ -679,6 +1005,25 @@ async function saveTestCase() {
     alert(`Failed to save test case: ${err.message}`)
   } finally {
     savingTestCase.value = false
+  }
+}
+
+async function updateTestCase() {
+  if (!activeTestCaseId.value || !selectedDecision.value || !selectedFileName.value) return
+
+  const tc = testCases.value.find(t => t.id === activeTestCaseId.value)
+  if (!tc) return
+
+  tc.decisionName = selectedDecisionName.value
+  tc.inputs = { ...inputValues.value }
+  tc.expectedOutputs = { ...expectedOutputs.value }
+  tc.lastRun = null
+
+  try {
+    await saveTestSuiteToServer()
+  } catch (err) {
+    console.error('Failed to update test case:', err)
+    alert(`Failed to update test case: ${err.message}`)
   }
 }
 
@@ -967,8 +1312,28 @@ onMounted(async () => {
   @apply mb-6;
 }
 
+.section-title-row {
+  @apply flex items-center justify-between mb-3;
+}
+
 .section-title {
-  @apply text-base font-semibold text-gray-800 mb-3;
+  @apply text-base font-semibold text-gray-800 mb-0;
+}
+
+.test-mode-toggle {
+  @apply flex rounded-lg border border-gray-300 overflow-hidden text-xs;
+}
+
+.toggle-option {
+  @apply px-3 py-1.5 cursor-pointer text-gray-600 bg-white transition-colors select-none;
+}
+
+.toggle-option input[type="radio"] {
+  @apply hidden;
+}
+
+.toggle-option.active {
+  @apply bg-emerald-600 text-white font-medium;
 }
 
 .quick-test-form {
@@ -1003,28 +1368,74 @@ onMounted(async () => {
   @apply w-full px-2.5 py-1.5 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500;
 }
 
-.checkbox-field {
-  @apply flex items-center gap-2;
+.radio-group {
+  @apply flex items-center gap-4;
 }
 
-.field-checkbox {
-  @apply w-4 h-4 text-emerald-600 border-gray-300 rounded focus:ring-emerald-500;
+.radio-option {
+  @apply flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer;
 }
 
-.checkbox-label {
-  @apply text-sm text-gray-600;
+.radio-option input[type="radio"] {
+  @apply w-3.5 h-3.5 text-emerald-600 border-gray-300 focus:ring-emerald-500;
+}
+
+.radio-unset {
+  @apply text-gray-400;
 }
 
 .field-type {
   @apply text-xs text-gray-400 font-mono;
 }
 
+.upstream-badge {
+  @apply ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700;
+}
+
+.decision-output-badge {
+  @apply ml-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700;
+}
+
 .no-fields {
   @apply text-sm text-gray-400 italic py-4;
 }
 
+.field-readonly {
+  @apply bg-gray-50 text-gray-400 cursor-default;
+}
+
+.field-passthrough-hint {
+  @apply text-[10px] text-gray-400 italic;
+}
+
 .output-hint {
   @apply text-xs text-gray-400 italic mt-3;
+}
+
+/* Output grouping */
+.output-group {
+  @apply mb-3;
+}
+
+.output-group-header {
+  @apply text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded mb-2 mt-2;
+}
+
+.output-group-header.is-upstream {
+  @apply text-gray-500 bg-gray-50;
+}
+
+/* Result grouping */
+.result-decision-group {
+  @apply mb-3;
+}
+
+.result-group-header {
+  @apply text-xs font-semibold text-emerald-700 bg-emerald-50 px-2 py-1 rounded mb-1;
+}
+
+.result-group-header.is-upstream {
+  @apply text-gray-500 bg-gray-50;
 }
 
 /* Form Actions */
@@ -1042,6 +1453,10 @@ onMounted(async () => {
 
 .btn-save {
   @apply bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-update {
+  @apply bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .btn-clear {

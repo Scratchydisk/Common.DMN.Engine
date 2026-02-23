@@ -61,7 +61,8 @@ public class DmnExecutionService
                 {
                     Name = d.Name,
                     RequiredDecisions = d.RequiredDecisions.Select(rd => rd.Name).ToList(),
-                    RequiredInputs = d.RequiredInputs.Select(ri => ri.Name).ToList()
+                    RequiredInputs = d.RequiredInputs.Select(ri => ri.Name).ToList(),
+                    AllRequiredInputs = d.GetAllRequiredInputs().Select(ri => ri.Name).ToList()
                 };
 
                 if (d is DmnDecisionTable table)
@@ -92,6 +93,18 @@ public class DmnExecutionService
                 {
                     di.Type = "expression";
                     di.Expression = expr.Expression;
+                    if (expr.Output != null)
+                    {
+                        di.TableOutputs =
+                        [
+                            new TableColumnInfo
+                            {
+                                Name = expr.Output.Name,
+                                Label = expr.Output.Label,
+                                TypeName = expr.Output.Type != null ? TypeLabel(expr.Output.Type) : null
+                            }
+                        ];
+                    }
                 }
 
                 return di;
