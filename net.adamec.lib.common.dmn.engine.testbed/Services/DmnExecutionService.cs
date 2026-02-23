@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
+using System.Xml;
 using net.adamec.lib.common.dmn.engine.engine.decisions;
 using net.adamec.lib.common.dmn.engine.engine.decisions.expression;
 using net.adamec.lib.common.dmn.engine.engine.decisions.table;
@@ -16,7 +17,7 @@ namespace net.adamec.lib.common.dmn.engine.testbed.Services;
 public class DmnExecutionService
 {
     private readonly DmnFileService _fileService;
-    private readonly ConcurrentDictionary<string, (DmnDefinition Definition, DateTime LastWrite)> _cache = new();
+    private readonly ConcurrentDictionary<string, (DmnDefinition Definition, DmnModel Model, DateTime LastWrite)> _cache = new();
 
     public DmnExecutionService(DmnFileService fileService)
     {
@@ -25,29 +26,33 @@ public class DmnExecutionService
 
     // ── Definition caching ──
 
-    private DmnDefinition GetDefinition(string name)
+    private (DmnDefinition Definition, DmnModel Model) GetDefinitionAndModel(string name)
     {
         var path = _fileService.GetFilePath(name);
         var lastWrite = File.GetLastWriteTimeUtc(path);
 
         if (_cache.TryGetValue(name, out var cached) && cached.LastWrite >= lastWrite)
-            return cached.Definition;
+            return (cached.Definition, cached.Model);
 
         var model = DmnParser.ParseAutoDetect(path);
         var definition = DmnDefinitionFactory.CreateDmnDefinition(model);
-        _cache[name] = (definition, lastWrite);
-        return definition;
+        _cache[name] = (definition, model, lastWrite);
+        return (definition, model);
     }
+
+    private DmnDefinition GetDefinition(string name) => GetDefinitionAndModel(name).Definition;
 
     // ── Get definition info ──
 
     public DefinitionInfo GetInfo(string name)
     {
-        var definition = GetDefinition(name);
+        var (definition, model) = GetDefinitionAndModel(name);
+        var filePath = _fileService.GetFilePath(name);
 
         var info = new DefinitionInfo
         {
-            FileName = Path.GetFileName(_fileService.GetFilePath(name)),
+            FileName = Path.GetFileName(filePath),
+            Metadata = ExtractMetadata(filePath, model),
             InputData = definition.InputData.Values.Select(v => new VariableInfo
             {
                 Name = v.Name,
@@ -274,11 +279,28 @@ public class DmnExecutionService
                 ExecutionTimeMs = sw.ElapsedMilliseconds
             };
 
-            // Collect actual outputs from first result
+            // Collect actual outputs from first result + upstream decision outputs
             if (result.HasResult && result.Results.Count > 0)
             {
                 tcResult.ActualOutputs = result.Results[0].Outputs;
                 tcResult.HitRules = result.Results[0].HitRules.Select(h => h.Index).ToList();
+
+                // Include outputs from upstream decisions (execution steps)
+                // so expected values for upstream outputs can be verified
+                foreach (var step in result.Steps ?? [])
+                {
+                    foreach (var (varName, value) in step.VariableChanges)
+                    {
+                        if (!tcResult.ActualOutputs.ContainsKey(varName))
+                        {
+                            tcResult.ActualOutputs[varName] = new OutputValue
+                            {
+                                Value = value,
+                                TypeName = value?.GetType() is { } t ? TypeLabel(t) : null
+                            };
+                        }
+                    }
+                }
             }
 
             // Compare against expected outputs
@@ -404,6 +426,56 @@ public class DmnExecutionService
             default:
                 return string.Equals(expected.ToString(), actual?.ToString(), StringComparison.OrdinalIgnoreCase);
         }
+    }
+
+    // ── Metadata extraction ──
+
+    private static FileMetadata ExtractMetadata(string filePath, DmnModel model)
+    {
+        var metadata = new FileMetadata
+        {
+            DmnVersion = model.DmnVersion switch
+            {
+                DmnParser.DmnVersionEnum.V1_1 => "1.1",
+                DmnParser.DmnVersionEnum.V1_3 => "1.3",
+                DmnParser.DmnVersionEnum.V1_3ext => "1.3",
+                DmnParser.DmnVersionEnum.V1_4 => "1.4",
+                DmnParser.DmnVersionEnum.V1_5 => "1.5",
+                _ => model.DmnVersion.ToString()
+            }
+        };
+
+        // Parse the raw XML to extract <definitions> element attributes
+        try
+        {
+            var xmlContent = File.ReadAllText(filePath);
+            using var reader = XmlReader.Create(new StringReader(xmlContent));
+            while (reader.Read())
+            {
+                if (reader.NodeType != XmlNodeType.Element || reader.LocalName != "definitions") continue;
+
+                metadata.DefinitionName = reader.GetAttribute("name");
+                metadata.Namespace = reader.GetAttribute("namespace");
+                metadata.Exporter = reader.GetAttribute("exporter");
+                metadata.ExporterVersion = reader.GetAttribute("exporterVersion");
+
+                // Camunda modeler attributes (in modeler namespace)
+                metadata.ExecutionPlatform = reader.GetAttribute("executionPlatform", "http://camunda.org/schema/modeler/1.0")
+                                             ?? reader.GetAttribute("modeler:executionPlatform");
+                metadata.ExecutionPlatformVersion = reader.GetAttribute("executionPlatformVersion", "http://camunda.org/schema/modeler/1.0")
+                                                    ?? reader.GetAttribute("modeler:executionPlatformVersion");
+
+                metadata.IsCamundaExport = metadata.Exporter != null &&
+                                           metadata.Exporter.Contains("amunda", StringComparison.OrdinalIgnoreCase);
+                break;
+            }
+        }
+        catch
+        {
+            // Best-effort metadata extraction
+        }
+
+        return metadata;
     }
 
     // ── Helpers ──

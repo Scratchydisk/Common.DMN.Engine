@@ -47,6 +47,18 @@ The MSBuild target only runs the client build when `wwwroot/index.html` does not
 
 At the top of the page, select a DMN file from the dropdown or upload a new `.dmn` file using the **Upload .dmn** button. Files with existing test suites are annotated with "(has tests)".
 
+### File Metadata Bar
+
+When a file is loaded, a row of badges appears below the file selector showing metadata extracted from the DMN XML `<definitions>` element:
+
+- **DMN version** (blue badge) — the specification version detected from the XML namespace (e.g. "DMN 1.3")
+- **Definition name** — the `name` attribute of the root `<definitions>` element
+- **Exporter** — the tool that exported the file and its version (e.g. "Camunda Modeler v5.43.1")
+- **Execution platform** — the target runtime set by the modeler, from the Camunda `modeler:executionPlatform` attribute (e.g. "Camunda Cloud 8.8.0")
+- **Camunda** (orange badge) — shown when the file was exported by a Camunda tool, indicating that V1.3ext parsing rules are applied automatically
+
+Hover over any badge to see a tooltip explaining what the value means and where it comes from.
+
 ### Decision Model Viewer
 
 When a file is loaded, the **Decision Model** section shows an interactive DRD visualisation powered by [bpmn.io](https://bpmn.io). This displays decision tables, expression decisions, input data nodes, and their dependencies.
@@ -151,6 +163,8 @@ The **Test Suite** section at the bottom manages saved test cases for the curren
 
 ![Save Test Case dialog](../doc/img/testbed/07-save-dialog.png)
 
+When a test case targets a decision with upstream dependencies, the test runner automatically includes outputs from all upstream decisions in the actual results. This means expected values can be set for any output in the DRD, not just the target decision's own outputs.
+
 ### Working with Test Cases
 
 - **Click a row** to load the test case into the Quick Test form for editing or re-execution
@@ -179,7 +193,7 @@ The testbed exposes a REST API for programmatic access. All endpoints are prefix
 |--------|----------|-------------|
 | `GET` | `/api/dmn` | List all DMN files in the configured directory |
 | `GET` | `/api/dmn/xml/{name}` | Get raw DMN XML content for a file |
-| `GET` | `/api/dmn/info/{name}` | Get parsed definition info (decisions, inputs, outputs, types) |
+| `GET` | `/api/dmn/info/{name}` | Get parsed definition info (decisions, inputs, outputs, types) and file metadata (DMN version, exporter, execution platform) |
 | `POST` | `/api/dmn/execute/{name}` | Execute a decision with provided inputs |
 | `GET` | `/api/dmn/tests/{name}` | Load the test suite for a DMN file |
 | `PUT` | `/api/dmn/tests/{name}` | Save (replace) the test suite for a DMN file |

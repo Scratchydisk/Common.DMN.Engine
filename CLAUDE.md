@@ -31,6 +31,7 @@ dotnet test net.adamec.lib.common.dmn.engine.tests/net.adamec.lib.common.dmn.eng
 - **net.adamec.lib.common.dmn.engine/** - Core library (.NET 10.0)
 - **net.adamec.lib.common.dmn.engine.tests/** - Consolidated test project (.NET 10.0)
 - **net.adamec.lib.common.dmn.engine.test.shared/** - Shared test code (linked into test project)
+- **net.adamec.lib.common.dmn.engine.testbed/** - Web-based test lab (ASP.NET Core + Nuxt SPA). See [docs/testbed.md](docs/testbed.md).
 - **net.adamec.lib.common.dmn.engine.simulator/** - WPF demo app (.NET 10.0-windows)
 - **build/** and **build.tasks/** - Custom MSBuild process (safe to ignore for development)
 
@@ -48,7 +49,7 @@ Code ──DmnDefinitionBuilder──▶ DmnDefinition ────────�
 2. **Definition** (`engine/definition/`): `DmnDefinitionFactory` transforms `DmnModel` into `DmnDefinition` — validation, variable type resolution, and dependency tree construction. Definitions are "virtually immutable" (exposed via read-only interfaces).
 3. **Builder** (`engine/definition/builder/`): `DmnDefinitionBuilder` provides a fluent API to create `DmnDefinition` programmatically without XML.
 4. **Decisions** (`engine/decisions/`): Two types — `DmnExpressionDecision` (single expression → output) and `DmnDecisionTable` (rules with inputs, outputs, hit policies).
-5. **Execution** (`engine/execution/`): `DmnExecutionContext` manages variables, resolves decision dependencies recursively, evaluates expressions via the FEEL evaluator, and returns `DmnDecisionResult`.
+5. **Execution** (`engine/execution/`): `DmnExecutionContext` manages variables, resolves decision dependencies recursively, evaluates expressions via the FEEL evaluator, and returns `DmnDecisionResult`. Decision table input entries use `ParseSimpleUnaryTests` first, with an automatic fallback to `ParseExpression` (full FEEL grammar) for compatibility with Camunda-style expressions that use `or`/`and` operators.
 
 ### FEEL Evaluator Pipeline
 

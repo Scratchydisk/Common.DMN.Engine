@@ -2,6 +2,15 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+## [2.0.1] - 2026-02-23 ##
+
+### Added ###
+- **Full-expression fallback for decision table input entries** — when `ParseSimpleUnaryTests` fails (e.g. Camunda-style `contains(...) or contains(...)` expressions), the engine now retries with `ParseExpression` (the full FEEL grammar supporting `or`/`and` operators). This improves compatibility with DMN files exported by Camunda and other tools that use full FEEL expressions in input entries rather than strict simple unary tests.
+- **DMN file metadata in the testbed** — the `/api/dmn/info/{name}` endpoint now returns a `metadata` object containing DMN version, definition name, namespace, exporter, exporter version, execution platform, and a Camunda export indicator. The frontend displays this as a row of badges below the file selector with tooltips explaining each value.
+
+### Fixed ###
+- **Test suite now verifies upstream decision outputs** — when running test cases for a decision with upstream dependencies (DRD), the test runner now includes outputs from upstream decisions in the actual results. Previously, expected values for upstream outputs (e.g. `emailGroup` from an upstream "Email Group" decision) were not compared, causing tests to fail even when the quick test form showed correct results.
+
 ## [2.0.0] - 2026-02-19 ##
 **This is a fork** of [adamecr/Common.DMN.Engine](https://github.com/adamecr/Common.DMN.Engine) (v1.1.1). The v2.0.0 release replaces the expression evaluation engine and makes several other substantial changes, making this a divergent fork rather than a drop-in upgrade. The original v1.x documentation is archived in [readme-v1.md](readme-v1.md). It's recommended to go through the [updated documentation](readme.md) for full details.
 
@@ -173,6 +182,7 @@ As this is a major update, it's recommended to go through the [documentation](re
 ### Added ###
 - Initial release
 
+[2.0.1]: https://github.com/Scratchydisk/Common.DMN.Engine/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/Scratchydisk/Common.DMN.Engine/compare/v1.1.1...v2.0.0
 [1.1.1]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/adamecr/Common.DMN.Engine/compare/v1.0.1...v1.1.0

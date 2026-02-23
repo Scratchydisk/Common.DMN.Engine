@@ -375,10 +375,19 @@ namespace net.adamec.lib.common.dmn.engine.engine.execution.context
                 {
                     parsedAst = FeelEngine.ParseSimpleUnaryTests(unaryTestsExpression, scope);
                 }
-                catch (Exception exception)
+                catch
                 {
-                    throw Logger.Fatal<DmnExecutorException>(
-                        $"Exception while parsing the unary tests expression {unaryTestsExpression}", exception);
+                    // Fallback: Camunda and other tools allow full FEEL expressions
+                    // (with or/and operators) in input entries, not just simple unary tests.
+                    try
+                    {
+                        parsedAst = FeelEngine.ParseExpression(unaryTestsExpression, scope);
+                    }
+                    catch (Exception fallbackException)
+                    {
+                        throw Logger.Fatal<DmnExecutorException>(
+                            $"Exception while parsing the unary tests expression {unaryTestsExpression}", fallbackException);
+                    }
                 }
 
                 if (Options.ParsedExpressionCacheScope != ParsedExpressionCacheScopeEnum.None)

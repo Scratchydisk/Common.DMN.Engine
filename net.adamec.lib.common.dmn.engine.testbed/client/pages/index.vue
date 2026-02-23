@@ -26,6 +26,27 @@
       </div>
     </div>
 
+    <!-- File Metadata Bar -->
+    <div class="metadata-bar" v-if="definitionInfo?.metadata">
+      <span class="metadata-chip dmn-version" v-if="definitionInfo.metadata.dmnVersion" title="DMN specification version detected from the XML namespace">
+        DMN {{ definitionInfo.metadata.dmnVersion }}
+      </span>
+      <span class="metadata-chip" v-if="definitionInfo.metadata.definitionName" title="Definition name from the &lt;definitions name=&quot;...&quot;&gt; attribute">
+        {{ definitionInfo.metadata.definitionName }}
+      </span>
+      <span class="metadata-chip" v-if="definitionInfo.metadata.exporter" title="Tool that exported this DMN file (from the exporter/exporterVersion attributes)">
+        {{ definitionInfo.metadata.exporter }}
+        <template v-if="definitionInfo.metadata.exporterVersion">v{{ definitionInfo.metadata.exporterVersion }}</template>
+      </span>
+      <span class="metadata-chip" v-if="definitionInfo.metadata.executionPlatform" title="Target execution platform set by the modeler (Camunda modeler:executionPlatform)">
+        {{ definitionInfo.metadata.executionPlatform }}
+        <template v-if="definitionInfo.metadata.executionPlatformVersion">{{ definitionInfo.metadata.executionPlatformVersion }}</template>
+      </span>
+      <span class="metadata-chip camunda" v-if="definitionInfo.metadata.isCamundaExport" title="This file was exported by a Camunda tool — V1.3ext parsing rules are applied automatically">
+        Camunda
+      </span>
+    </div>
+
     <!-- Section B: DMN Viewer (collapsible) -->
     <details class="section-accordion" :open="viewerOpen" v-if="dmnXml">
       <summary class="section-summary" @click.prevent="viewerOpen = !viewerOpen">
@@ -1251,6 +1272,23 @@ onMounted(async () => {
 /* File Selector */
 .file-selector {
   @apply mb-6 p-4 bg-white border border-gray-200 rounded-lg;
+}
+
+/* File Metadata Bar */
+.metadata-bar {
+  @apply flex flex-wrap gap-2 mb-4 px-4 py-2.5 bg-white border border-gray-200 rounded-lg;
+}
+
+.metadata-chip {
+  @apply inline-block px-2 py-0.5 text-xs font-medium rounded-full bg-gray-100 text-gray-600;
+}
+
+.metadata-chip.dmn-version {
+  @apply bg-blue-100 text-blue-700;
+}
+
+.metadata-chip.camunda {
+  @apply bg-orange-100 text-orange-700;
 }
 
 /* Section Accordion */

@@ -17,8 +17,21 @@ public class DmnFileInfo
 public class DefinitionInfo
 {
     public string FileName { get; set; }
+    public FileMetadata Metadata { get; set; }
     public List<DecisionInfo> Decisions { get; set; } = [];
     public List<VariableInfo> InputData { get; set; } = [];
+}
+
+public class FileMetadata
+{
+    public string DmnVersion { get; set; }
+    public string DefinitionName { get; set; }
+    public string Namespace { get; set; }
+    public string Exporter { get; set; }
+    public string ExporterVersion { get; set; }
+    public string ExecutionPlatform { get; set; }
+    public string ExecutionPlatformVersion { get; set; }
+    public bool IsCamundaExport { get; set; }
 }
 
 public class DecisionInfo
