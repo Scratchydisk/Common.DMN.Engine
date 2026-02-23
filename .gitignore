@@ -263,3 +263,9 @@ __pycache__/
 release.chklist
 *.chklist
 binaries*/
+
+# DMN Testbed
+net.adamec.lib.common.dmn.engine.testbed/wwwroot/
+net.adamec.lib.common.dmn.engine.testbed/client/.nuxt/
+net.adamec.lib.common.dmn.engine.testbed/client/.output/
+net.adamec.lib.common.dmn.engine.testbed/client/node_modules/
