@@ -11,6 +11,11 @@ A .NET rule engine that executes decisions defined in [DMN (Decision Model and N
 
 See the latest changes in the [changelog](changelog.md).
 
+## Tools
+
+- **[DMN Testbed](docs/testbed.md)** — A web-based test lab for interactively executing decisions, testing full DRD trees, and managing regression test suites. Start it with `dotnet run --project net.adamec.lib.common.dmn.engine.testbed -- --dmn-dir=/path/to/dmn/files` and open `http://localhost:5000`.
+- **[CLI Tool](docs/cli-tool.md)** — `dmnrunner` command-line tool for batch execution and CI integration.
+
 ## What Changed from the Original
 
 | Area | Original (v1.x) | This fork (v2.0) |
