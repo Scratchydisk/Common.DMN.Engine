@@ -25,7 +25,7 @@ var result = ctx.ExecuteDecision("decision name");
 
 DMN Engine usage flows are quite straightforward.
 
-![DMN engine blocks](doc/img/blocks.png)
+![DMN engine blocks](docs/img/blocks.png)
 
 The decision model can be defined in DMN XML defined by OMG (versions 1.1, 1.3, 1.4, and 1.5). The XML is parsed into `DmnModel` using version-specific methods such as `DmnParser.Parse` (1.1), `DmnParser.Parse13`, `DmnParser.Parse13ext`, `DmnParser.Parse14`, `DmnParser.Parse15`, or the auto-detecting `DmnParser.ParseAutoDetect` method which reads the root element XML namespace to determine the DMN version. Corresponding `ParseString` variants are also available.
 
@@ -62,13 +62,13 @@ The builder based definition tests are prepared similar way - inherit from "prim
 
 
 ### Code Documentation ###
-The [code documentation](doc/net.adamec.lib.common.dmn.engine.md) is generated during the customized build using [MarkupDoc](https://github.com/adamecr/MarkupDoc).
+The [code documentation](docs/net.adamec.lib.common.dmn.engine.md) is generated during the customized build using [MarkupDoc](https://github.com/adamecr/MarkupDoc).
 
 
 ## DMN Decision Model ##
 The DMN Model is actually set of inputs (parameters) and decisions.
 
-![DMN diagram](doc/img/dmn_diagram.png)
+![DMN diagram](docs/img/dmn_diagram.png)
 
 The DMN Model XML is parsed (deserialized) using the `DmnParser.Parse` method getting the `fileName` as input parameter and returning the `DmnModel` (deserialized XML) based on such decisions model XML definition. The DmnParser contains a very simple logic only, as its intention is just to deserialize the XML.
 ```csharp
@@ -108,7 +108,7 @@ var ctx = DmnExecutionContextFactory.CreateExecutionContext(definition);
 ```
 
 ### Inputs ###
-![DMN input](doc/img/dmn_input.png) Input represents an external data entering the Engine while evaluating the decision. You can think about it as it's the parameter of the decision to be made.
+![DMN input](docs/img/dmn_input.png) Input represents an external data entering the Engine while evaluating the decision. You can think about it as it's the parameter of the decision to be made.
 
 The input is defined in XML file using the `inputData` element and recognized by its unique `Name` taken from `name` attribute (or from `id` attribute when the `name` attribute is missing. The `id` attribute is mandatory). 
 
@@ -143,7 +143,7 @@ Although the builder also allows to create the input without specifying the vari
 
 
 ### Decisions ###
-![DMN decision](doc/img/dmn_decision.png) Decision represents an entity the Engine can evaluate and provide the required output(s).
+![DMN decision](docs/img/dmn_decision.png) Decision represents an entity the Engine can evaluate and provide the required output(s).
 
 The decision is defined in XML file using the `decision` element and recognized by its unique `Name` taken from `name` attribute (or from `id` attribute when the `name` attribute is missing. The `id` attribute is mandatory). The `Label` for decision is the same as `Name` when parsing from XML.
 
@@ -161,8 +161,8 @@ The `Name` of the decision is used to execute its evaluation
 result = ctx.ExecuteDecision("decision name");
 ```
 The Engine supports the following decision types
-- ![DMN expression decision](doc/img/dmn_decision_expression.png) Expression Decisions that evaluate the defined expression and output the result into defined output variable
-- ![DMN decision table](doc/img/dmn_decision_table.png) Decision Tables that evaluate set of decision rules and provide matching output(s) 
+- ![DMN expression decision](docs/img/dmn_decision_expression.png) Expression Decisions that evaluate the defined expression and output the result into defined output variable
+- ![DMN decision table](docs/img/dmn_decision_table.png) Decision Tables that evaluate set of decision rules and provide matching output(s) 
 
 The builder provides two methods `WithExpressionDecision` and `WithTableDecision` to define the decisions. We will get to the details in the chapters related to expression decisions and decision tables. Optional label can be defined using the overloads.
 
@@ -187,7 +187,7 @@ var definition = new DmnDefinitionBuilder()
 
 #### Dependency Tree ####
 When the model is parsed, the parser builds the dependency tree based on the information requirement connector. The decision can depend on zero or more inputs and on zero or more other decisions. When parsing the decision, the parser creates the full dependency tree of required decisions that need to be evaluated before (in proper order).
-![DMN dependency tree](doc/img/dmn_dependency.png)
+![DMN dependency tree](docs/img/dmn_dependency.png)
 
 Required inputs actually don't define the "hard dependency", meaning they are not checked during the execution for the existence of value (not being null). Definition of the required inputs is rather to describe the connection between the input and the decision for the information or better understanding of the whole decision model
 
@@ -313,7 +313,7 @@ When the data type is defined in DMN model (attribute `typeRef`), the parser map
 Besides the defined data types (also referred as "known types"), the Engine actually supports any .NET type known while evaluating the expressions, it's just not possible to explicitly define such data type for the variables in DMN Model.
 For example, let's have following model
 
-![DMN complex objects](doc/img/dmn_complexObjects.png)
+![DMN complex objects](docs/img/dmn_complexObjects.png)
 
 Input parameter `dyna` is complex object
 ```csharp
@@ -321,10 +321,10 @@ var dyna = new { Name = "name", IsOk = true, Direct="some value" };
 ctx.WithInputParameter("dyna", dyna);
 ```
 It can be simply used in expression decision, however the output is mapped to variable of "standard" type
-![DMN complex objects in expression](doc/img/dmn_complexObjectExpr.png)
+![DMN complex objects in expression](docs/img/dmn_complexObjectExpr.png)
 
 When used in decision tables, the complex objects can be used as inputs as well as in rules for input/output expressions. Once again, the output is mapped to variable of "standard" type. The XML syntax is described below at Decision Tables chapter.
-![DMN complex objects in table](doc/img/dmn_complexObjectTable.png)
+![DMN complex objects in table](docs/img/dmn_complexObjectTable.png)
 
 ## Expressions in Decision Model ##
 The Engine uses a full FEEL (Friendly Enough Expression Language) evaluator built with ANTLR4. All expressions must be valid FEEL expressions.
@@ -353,7 +353,7 @@ For backward compatibility with v1.x expressions, the FEEL evaluator also suppor
 
 ## Expression Decisions ##
 Expression decision evaluates the expression and stores the returned value in output variable.
-![DMN expression decision](doc/img/dmn_complexObjectExpr.png)
+![DMN expression decision](docs/img/dmn_complexObjectExpr.png)
 
 The expression is in `text` element of the `literalExpression` child of the `decision` element in DMN XML.
 The output variable is identified by `name` (or `id` if `name` is missing) attribute. The data type is defined in `typeRef` attribute and is used to specify/cross-check the variable data type (casting is not supported).
@@ -418,7 +418,7 @@ var expressionDecisionDefinition5 = new DmnDefinitionBuilder()
 
 ## Decision Tables ##
 Decision table defines the set of rules - "when the input values matches all input conditions, provide defined outputs".
-![DMN decision table parts](doc/img/dmn_table_parts.png)
+![DMN decision table parts](docs/img/dmn_table_parts.png)
 Input and output definitions (declarations) are common for all rules and define the columns used in decision table.
 **Decision table input** means that there will be an input data of given type that are to be evaluated using the rule input expression. Decision table input also defines, where to get the input data - from variable (variable input) or by evaluating the expression (expression input). 
 *Note:The expression input expressions are evaluated for each rule.*
@@ -1085,13 +1085,13 @@ On the other hand, the static cache follows the `AppDomain` life cycle so it can
 ## DMN Engine Simulator ##
 DMN Engine Simulator is a WPF Demo application targeting .NET 10.0 (Desktop) to demonstrate features of DMN Engine.
 
-![DMN Simulator](doc/img/sim_main.png)
+![DMN Simulator](docs/img/sim_main.png)
 
 The Simulator parses the DMN XML file (it uses auto-detection to determine the DMN version when reading the DMN XML files) into the DMN definition and opens a workspace for the file. There can be multiple workspaces and even the single file can be opened in multiple workspaces.
 
 Use the Add DMN drop down to add a DMN XML file. The drop down offers the `.dmn` files that are present in `dmn` folder of the application directory together with the (last) option to open DMN from file using the standard file open dialog.
 
-![DMN Simulator Add DMN](doc/img/sim_add_dmn.png)
+![DMN Simulator Add DMN](docs/img/sim_add_dmn.png)
 
 Each workspace has four panels with movable splitters between them.
 
@@ -1100,36 +1100,36 @@ The definition panel provides the information about DMN definition. It shows *Gr
 
 The term *Graph* is used intentionally as it doesn't really depict the full DMN Diagram as in XML, but just the decisions and inputs (both selectable) with the edges representing the direct information requirements.
 
-![DMN Simulator Definition Graph](doc/img/sim_definition_graph.png)
+![DMN Simulator Definition Graph](docs/img/sim_definition_graph.png)
 
 The [GraphShape](https://github.com/KeRNeLith/GraphShape) library is used for the visualization (also the `zoomcontrol` and configuration fly-out is reused with some minor changes from its demo application). The key addition to the ouot of the box GraphShape is a custom *DmnDi* layout algorithm that layouts the graph vertices (inputs and decisions) using the DMNDI (DMN Diagram) information from DMN XML (vertices without the related shape in DMNDI are positioned like a tiles within the boundary specified in *DmnDi* layout algorithm parameters). When any of inputs or decisions has the shape Extension, *DmnDi* algorithm is used by default, otherwise the *Tree* algorithm is used to layout the vertices within the graph.
 
 The other tabs provides the very basic information about *Decisions*, *Inputs* and *Variables* (actually the inputs are just a subset of variables).
-![DMN Simulator Definition Tabs](doc/img/sim_definition_tabs.png)
+![DMN Simulator Definition Tabs](docs/img/sim_definition_tabs.png)
 
 ### Detail ###
 The detail panel just presents the design of selected decision - table or expression
 
-![DMN Simulator Detail Table](doc/img/sim_detail_table.png)
+![DMN Simulator Detail Table](docs/img/sim_detail_table.png)
 
-![DMN Simulator Detail Expression](doc/img/sim_detail_expression.png)
+![DMN Simulator Detail Expression](docs/img/sim_detail_expression.png)
 
 ### Execute ###
 The Simulator allows to try the decision with different inputs and see the execution results. To execute the decision simply choose the decision to execute, fill the inputs as needed (can be null, meaning the input value is not provided to execution context) and click to *Execute* button.
 
 The specialized controls are used to enter the values of known types recognized by parser. When the type is not identified by parser from the definition (or it's identified but not as the know type), the entry is via text field and the combo box is provided to let the user choose a know type to which the raw value should be converted before passing to the execution context as the input parameter.
 
-![DMN Simulator Execute](doc/img/sim_execute.png)
+![DMN Simulator Execute](docs/img/sim_execute.png)
 
 ### Results
 When a decision has been executed, the result outputs are shown. There can be no output, single output or multiple outputs and each output can also have zero, single or multiple output variables. All depending on the decision design and the input parameters.
 
-![DMN Simulator Result Outputs](doc/img/sim_results_outputs.png)
+![DMN Simulator Result Outputs](docs/img/sim_results_outputs.png)
 
 The execution context is configured to use the snapshots, so it's possible to trace the execution steps and see what were the outputs of that particular step (including the information about the rules that got hit in decision table) and the state of all variables at the end of the step, indicating the changes if any.
 
-![DMN Simulator Result Steps](doc/img/sim_results_steps.png)
+![DMN Simulator Result Steps](docs/img/sim_results_steps.png)
 
 The other tracing view is through the variables, presenting the value after the whole execution together with the history how the value of such variable changed within the individual steps.
 
-![DMN Simulator Result Variables](doc/img/sim_results_variables.png)
+![DMN Simulator Result Variables](docs/img/sim_results_variables.png)

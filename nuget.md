@@ -24,4 +24,4 @@ It's also possible to create the DMN Definition by code (instead of parsing the 
 ## Documentation ##
 More details are available in [readme](https://github.com/adamecr/Common.DMN.Engine/blob/master/readme.md) at [github repo](https://github.com/adamecr/Common.DMN.Engine). It's highly recommended to read it first to understand how the DMN Engine works and how to design the (XML) models properly.
 
-The code documentation is available [here](https://github.com/adamecr/Common.DMN.Engine/blob/master/doc/net.adamec.lib.common.dmn.engine.md) (generated during the customized build using [MarkupDoc](https://github.com/adamecr/MarkupDoc)).
+The code documentation is available [here](https://github.com/adamecr/Common.DMN.Engine/blob/master/docs/net.adamec.lib.common.dmn.engine.md) (generated during the customized build using [MarkupDoc](https://github.com/adamecr/MarkupDoc)).

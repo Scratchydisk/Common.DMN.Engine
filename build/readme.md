@@ -145,7 +145,7 @@ The target uses some properties to adjust the configuration:
 <PropertyGroup>
 	<MarkupDocPath>$(USERPROFILE)\Documents\Visual Studio 2017\Projects\MarkupDoc\binaries\MarkupDoc.exe</MarkupDocPath>
 	<MarkupDocGenerate>true</MarkupDocGenerate>
-	<MarkupDocTargetDir>$(MSBuildProjectDirectory)/../doc/</MarkupDocTargetDir>
+	<MarkupDocTargetDir>$(MSBuildProjectDirectory)/../docs/</MarkupDocTargetDir>
 	<MarkupDocTargetName>$(MSBuildProjectName)</MarkupDocTargetName>
 	<MarkupDocLocalMsDocDir>X:/_DEV/_dotnet-api-docs/dotnet-api-docs</MarkupDocLocalMsDocDir>
 </PropertyGroup>

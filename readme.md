@@ -119,7 +119,7 @@ ctx.WithInputParameter("input name", inputValue);
 var result = ctx.ExecuteDecision("decision name");
 ```
 
-![DMN engine blocks](doc/img/blocks.png)
+![DMN engine blocks](docs/img/blocks.png)
 
 ## Build and Test
 
@@ -189,4 +189,4 @@ npm run generate
 
 ### Code Documentation
 
-The [code documentation](doc/net.adamec.lib.common.dmn.engine.md) is generated during the customised build using [MarkupDoc](https://github.com/adamecr/MarkupDoc).
+The [code documentation](docs/net.adamec.lib.common.dmn.engine.md) is generated during the customised build using [MarkupDoc](https://github.com/adamecr/MarkupDoc).

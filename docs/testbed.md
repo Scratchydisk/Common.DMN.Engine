@@ -2,7 +2,7 @@
 
 The DMN Testbed is a web-based test lab for interactively executing DMN decisions, testing full Decision Requirements Diagrams (DRDs), and managing regression test suites. It is designed for **local development use** and deliberately does not include authentication — it binds to localhost and is intended to be run on a developer's machine against local DMN files.
 
-![Full interface overview](../doc/img/testbed/01-full-interface.png)
+![Full interface overview](img/testbed/01-full-interface.png)
 
 ## Getting Started
 
@@ -63,7 +63,7 @@ Hover over any badge to see a tooltip explaining what the value means and where 
 
 When a file is loaded, the **Decision Model** section shows an interactive DRD visualisation powered by [bpmn.io](https://bpmn.io). This displays decision tables, expression decisions, input data nodes, and their dependencies.
 
-![Decision Model viewer](../doc/img/testbed/02-decision-model.png)
+![Decision Model viewer](img/testbed/02-decision-model.png)
 
 The viewer includes:
 - **View tabs** for each decision (DRD view and individual table/expression views)
@@ -79,7 +79,7 @@ Below the model viewer, select the **Decision under test** from a dropdown. Summ
 
 The Quick Test form lets you provide input values, set expected outputs, and execute a decision interactively.
 
-![Quick Test form](../doc/img/testbed/03-quick-test-form.png)
+![Quick Test form](img/testbed/03-quick-test-form.png)
 
 ### Inputs Column
 
@@ -126,13 +126,13 @@ Upstream inputs are shown with badges indicating which decision they feed into.
 
 Tests only the selected decision in isolation. Upstream decision outputs appear as regular input fields (with an "output of" badge) so you can manually provide pre-computed values. This is useful for testing a single decision's logic without depending on the correctness of upstream decisions.
 
-![Isolated mode](../doc/img/testbed/04-isolated-mode.png)
+![Isolated mode](img/testbed/04-isolated-mode.png)
 
 ## Execution Results
 
 After executing, the result panel shows:
 
-![Execution results with trace](../doc/img/testbed/05-result-trace.png)
+![Execution results with trace](img/testbed/05-result-trace.png)
 
 - **Output values** with their names, values, and types
 - **PASS / FAIL indicators** when expected outputs were set
@@ -152,7 +152,7 @@ Expand the **Execution trace** accordion to see a step-by-step breakdown:
 
 The **Test Suite** section at the bottom manages saved test cases for the current DMN file.
 
-![Test Suite table](../doc/img/testbed/06-test-suite.png)
+![Test Suite table](img/testbed/06-test-suite.png)
 
 ### Creating Test Cases
 
@@ -161,7 +161,7 @@ The **Test Suite** section at the bottom manages saved test cases for the curren
 3. Enter a descriptive name in the dialog
 4. Click **Save**
 
-![Save Test Case dialog](../doc/img/testbed/07-save-dialog.png)
+![Save Test Case dialog](img/testbed/07-save-dialog.png)
 
 When a test case targets a decision with upstream dependencies, the test runner automatically includes outputs from all upstream decisions in the actual results. This means expected values can be set for any output in the DRD, not just the target decision's own outputs.
 
