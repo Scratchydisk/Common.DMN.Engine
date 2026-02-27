@@ -160,3 +160,53 @@ public class TestCaseResult
     public long ExecutionTimeMs { get; set; }
     public string Error { get; set; }
 }
+
+// ── CSV Batch Test ──
+
+public class BatchTestCsvResult
+{
+    public string DmnFile { get; set; }
+    public string DecisionName { get; set; }
+    public string Mode { get; set; } // "execute" or "test"
+    public BatchTestSummary Summary { get; set; }
+    public List<BatchTestRowResult> Rows { get; set; } = [];
+    public List<string> Warnings { get; set; } = [];
+    public long TotalTimeMs { get; set; }
+}
+
+public class BatchTestSummary
+{
+    public int TotalRows { get; set; }
+    public int Passed { get; set; }
+    public int Failed { get; set; }
+    public int Errors { get; set; }
+}
+
+public class BatchTestRowResult
+{
+    public int RowNumber { get; set; }
+    public string Status { get; set; } // "pass", "fail", "error", "executed"
+    public Dictionary<string, OutputValue> ActualOutputs { get; set; } = [];
+    public Dictionary<string, string> FailureDetails { get; set; }
+    public List<int> HitRules { get; set; } = [];
+    public long ExecutionTimeMs { get; set; }
+    public string Error { get; set; }
+}
+
+// ── DMN Upload ──
+
+public class UploadResult
+{
+    public bool Success { get; set; }
+    public string FileName { get; set; }
+    public string Message { get; set; }
+}
+
+// ── CSV Import ──
+
+public class CsvImportResult
+{
+    public int Imported { get; set; }
+    public int TotalTestCases { get; set; }
+    public List<string> Warnings { get; set; } = [];
+}

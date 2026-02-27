@@ -176,8 +176,10 @@ When a test case targets a decision with upstream dependencies, the test runner 
 
 ### Import and Export
 
-- **Export** — Download the test suite as a JSON file
-- **Import** — Upload a JSON file to replace the current test suite
+- **Export JSON** — Download the test suite as a JSON file
+- **Export CSV** — Download the test suite as a CSV file with `Name`, `Decision`, input columns, and `expected:` output columns. If variables have allowed values, a `#LOOKUPS` section is appended listing the options per column. Works even with zero test cases to export a template with headers only.
+- **Import JSON** — Upload a JSON file to append test cases to the current suite
+- **Import CSV** — Upload a CSV file to import rows as test cases. Supports `Name` and `Decision` columns for round-trip with Export CSV. The `#LOOKUPS` section is ignored on import.
 
 ## Test Data Persistence
 
@@ -198,6 +200,9 @@ The testbed exposes a REST API for programmatic access. All endpoints are prefix
 | `GET` | `/api/dmn/tests/{name}` | Load the test suite for a DMN file |
 | `PUT` | `/api/dmn/tests/{name}` | Save (replace) the test suite for a DMN file |
 | `POST` | `/api/dmn/tests/run/{name}` | Run test cases and return results |
+| `POST` | `/api/dmn/upload/{name}` | Upload a DMN file (multipart form or raw XML body) |
+| `POST` | `/api/dmn/batch-test-csv/{name}?decisionName=X` | Batch test a decision using CSV data (multipart form or raw CSV body) |
+| `POST` | `/api/dmn/tests/import-csv/{name}?decisionName=X` | Import CSV rows as test cases into the test suite |
 
 The `{name}` parameter is the file path relative to `--dmn-dir` and supports subdirectories (e.g. `subfolder/my-model.dmn`).
 
@@ -231,3 +236,66 @@ curl -X POST http://localhost:5000/api/dmn/tests/run/my-model.dmn \
   -H "Content-Type: application/json" \
   -d '{"testCaseIds": ["id-1", "id-2"]}'
 ```
+
+### Example: Upload a DMN File
+
+```bash
+curl -X POST http://localhost:5000/api/dmn/upload/my-model.dmn \
+  -F "file=@my-model.dmn"
+```
+
+### Example: CSV Batch Test
+
+Execute a decision against each row in a CSV file. Columns map to input variables. Add `expected:` prefix to columns for pass/fail validation.
+
+```bash
+curl -X POST "http://localhost:5000/api/dmn/batch-test-csv/my-model.dmn?decisionName=Auto%20Decision" \
+  -F "file=@test-data.csv"
+```
+
+CSV format (execute-only):
+```csv
+Location,Sole_Trader,CS_Score
+UK,false,35
+US,true,80
+```
+
+CSV format (with expected output validation):
+```csv
+Location,Sole_Trader,CS_Score,expected:Result
+UK,false,35,Decline
+US,true,80,Accept
+```
+
+Response includes per-row results and a summary:
+```json
+{
+  "dmnFile": "my-model.dmn",
+  "decisionName": "Auto Decision",
+  "mode": "test",
+  "summary": { "totalRows": 2, "passed": 1, "failed": 1, "errors": 0 },
+  "rows": [
+    { "rowNumber": 1, "status": "pass", "actualOutputs": { "Result": { "value": "Decline", "typeName": "string" } } },
+    { "rowNumber": 2, "status": "fail", "actualOutputs": { "Result": { "value": "Refer", "typeName": "string" } }, "failureDetails": { "Result": "Expected 'Accept' but got 'Refer'" } }
+  ],
+  "warnings": [],
+  "totalTimeMs": 42
+}
+```
+
+See [CSV Batch Testing Guide](csv-batch-testing.md) for detailed documentation including Katalon integration.
+
+### Example: Import CSV as Test Cases
+
+Import CSV rows as test cases into the existing test suite:
+
+```bash
+curl -X POST "http://localhost:5000/api/dmn/tests/import-csv/my-model.dmn?decisionName=Auto%20Decision" \
+  -F "file=@test-data.csv"
+```
+
+The CSV format is the same as batch testing. Each row becomes a test case with an auto-generated name ("Row 1", "Row 2", etc.). Imported cases are appended to the existing suite.
+
+### CSV Import in the UI
+
+The test suite section includes an **Import CSV** button alongside the JSON import. Click it, select a `.csv` file, and the rows are imported as test cases for the currently selected decision.

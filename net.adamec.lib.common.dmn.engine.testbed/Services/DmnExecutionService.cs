@@ -380,7 +380,7 @@ public class DmnExecutionService
         }
     }
 
-    private static object ConvertStringToType(string value, Type targetType)
+    internal static object ConvertStringToType(string value, Type targetType)
     {
         if (targetType == typeof(string)) return value;
         if (targetType == typeof(bool)) return bool.Parse(value);
@@ -395,7 +395,7 @@ public class DmnExecutionService
         return value;
     }
 
-    private static object InferValue(string value)
+    internal static object InferValue(string value)
     {
         if (bool.TryParse(value, out var b)) return b;
         if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)) return n;
@@ -480,7 +480,7 @@ public class DmnExecutionService
 
     // ── Helpers ──
 
-    private static string TypeLabel(Type type)
+    internal static string TypeLabel(Type type)
     {
         if (type == typeof(string)) return "string";
         if (type == typeof(int)) return "integer";

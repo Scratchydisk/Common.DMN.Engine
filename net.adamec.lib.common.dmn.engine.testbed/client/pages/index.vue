@@ -315,6 +315,7 @@
           <button class="btn btn-clear" @click="clearForm">
             Clear
           </button>
+          <span v-if="activeTestCaseName" class="active-test-name" :title="activeTestCaseName">{{ activeTestCaseName }}</span>
         </div>
       </div>
 
@@ -413,11 +414,18 @@
             {{ runningAll ? 'Running...' : 'Run All' }}
           </button>
           <label class="btn btn-sm btn-secondary import-btn">
-            Import
+            Import JSON
             <input type="file" accept=".json" @change="importTestCases" class="hidden-input" />
           </label>
-          <button class="btn btn-sm btn-secondary" @click="exportTestCases" :disabled="testCases.length === 0">
-            Export
+          <label class="btn btn-sm btn-secondary import-btn">
+            Import CSV
+            <input type="file" accept=".csv" @change="importCsvTestCases" class="hidden-input" />
+          </label>
+          <button class="btn btn-sm btn-secondary" @click="exportTestCasesJson" :disabled="testCases.length === 0">
+            Export JSON
+          </button>
+          <button class="btn btn-sm btn-secondary" @click="exportTestCasesCsv" :disabled="!selectedDecision">
+            Export CSV
           </button>
         </div>
       </div>
@@ -735,7 +743,7 @@ function getAllowedValuesForInput(inputName) {
   const values = new Set()
   for (const decision of (definitionInfo.value.decisions || [])) {
     for (const tableInput of (decision.tableInputs || [])) {
-      if (tableInput.name === inputName && tableInput.allowedValues?.length) {
+      if ((tableInput.name === inputName || tableInput.expression === inputName) && tableInput.allowedValues?.length) {
         tableInput.allowedValues.forEach(v => values.add(v))
       }
     }
@@ -812,6 +820,12 @@ const extraInputs = computed(() => {
 
 const hasAnyInput = computed(() => {
   return Object.values(inputValues.value).some(v => v !== '' && v !== null && v !== undefined && v !== false)
+})
+
+const activeTestCaseName = computed(() => {
+  if (!activeTestCaseId.value) return null
+  const tc = testCases.value.find(t => t.id === activeTestCaseId.value)
+  return tc?.name || null
 })
 
 // Helper functions
@@ -1157,7 +1171,7 @@ async function runAllTests() {
 }
 
 // Import/Export
-function exportTestCases() {
+function exportTestCasesJson() {
   const exportData = {
     version: 1,
     dmnFile: selectedFileName.value.split('/').pop(),
@@ -1171,6 +1185,163 @@ function exportTestCases() {
   link.download = `${selectedFileName.value.replace(/[/\\]/g, '-').replace('.dmn', '')}.tests.json`
   link.click()
   URL.revokeObjectURL(url)
+}
+
+function exportTestCasesCsv() {
+  // Build column definitions from decision metadata
+  const inputCols = []      // { name, allowedValues }
+  const expectedCols = []   // { name, allowedValues }
+
+  // Collect input columns from all decisions referenced by test cases, or current decision
+  const decisionsToInclude = new Set()
+  for (const tc of testCases.value) {
+    if (tc.decisionName) decisionsToInclude.add(tc.decisionName)
+  }
+  if (selectedDecision.value) decisionsToInclude.add(selectedDecision.value.name)
+
+  const decisionsByName = {}
+  for (const d of (definitionInfo.value?.decisions || [])) {
+    decisionsByName[d.name] = d
+  }
+
+  // Collect all unique input variable names (ordered: table inputs first, then extras)
+  const seenInputs = new Set()
+  const seenOutputs = new Set()
+
+  for (const dName of decisionsToInclude) {
+    const d = decisionsByName[dName]
+    if (!d) continue
+
+    // Inputs: allRequiredInputs gives us the full transitive set
+    for (const inputName of (d.allRequiredInputs || [])) {
+      if (seenInputs.has(inputName)) continue
+      seenInputs.add(inputName)
+
+      // Find allowed values from table inputs across all decisions
+      const allowedValues = getAllowedValuesForInput(inputName)
+      // Also find type info
+      const varInfo = definitionInfo.value?.inputData?.find(v => v.name === inputName)
+      const tableInput = (d.tableInputs || []).find(t => t.name === inputName)
+      inputCols.push({
+        name: inputName,
+        allowedValues: allowedValues || tableInput?.allowedValues || null
+      })
+    }
+
+    // Outputs: own outputs + upstream
+    const collectOutputs = (decision, visited = new Set()) => {
+      for (const o of (decision.tableOutputs || [])) {
+        if (o.name && !seenOutputs.has(o.name)) {
+          seenOutputs.add(o.name)
+          expectedCols.push({
+            name: o.name,
+            allowedValues: o.allowedValues?.length ? o.allowedValues : null
+          })
+        }
+      }
+      for (const rdName of (decision.requiredDecisions || [])) {
+        if (visited.has(rdName)) continue
+        visited.add(rdName)
+        const rd = decisionsByName[rdName]
+        if (rd) collectOutputs(rd, visited)
+      }
+    }
+    collectOutputs(d)
+  }
+
+  // Also scan test case keys for any columns not captured by metadata
+  for (const tc of testCases.value) {
+    for (const key of Object.keys(tc.inputs || {})) {
+      if (!seenInputs.has(key)) {
+        seenInputs.add(key)
+        inputCols.push({ name: key, allowedValues: null })
+      }
+    }
+    for (const key of Object.keys(tc.expectedOutputs || {})) {
+      if (!seenOutputs.has(key)) {
+        seenOutputs.add(key)
+        expectedCols.push({ name: key, allowedValues: null })
+      }
+    }
+  }
+
+  // Build CSV content
+  const headers = ['Name', 'Decision',
+    ...inputCols.map(c => c.name),
+    ...expectedCols.map(c => `expected:${c.name}`)
+  ]
+
+  const rows = testCases.value.map(tc => {
+    const row = [
+      tc.name || '',
+      tc.decisionName || ''
+    ]
+
+    for (const col of inputCols) {
+      row.push(jsonElementToString(tc.inputs?.[col.name]))
+    }
+
+    for (const col of expectedCols) {
+      row.push(jsonElementToString(tc.expectedOutputs?.[col.name]))
+    }
+
+    return row
+  })
+
+  // Build CSV string
+  let csv = headers.map(escapeCsvField).join(',') + '\n'
+  for (const row of rows) {
+    csv += row.map(escapeCsvField).join(',') + '\n'
+  }
+
+  // Append #LOOKUPS section for columns with allowed values
+  const lookupsEntries = []
+  for (const col of inputCols) {
+    if (col.allowedValues?.length) {
+      lookupsEntries.push({ column: col.name, values: col.allowedValues })
+    }
+  }
+  for (const col of expectedCols) {
+    if (col.allowedValues?.length) {
+      lookupsEntries.push({ column: `expected:${col.name}`, values: col.allowedValues })
+    }
+  }
+
+  if (lookupsEntries.length > 0) {
+    csv += '\n#LOOKUPS\n'
+    csv += '#Column,Allowed Values\n'
+    for (const entry of lookupsEntries) {
+      csv += `#${escapeCsvField(entry.column)},${entry.values.map(escapeCsvField).join(',')}\n`
+    }
+  }
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = `${selectedFileName.value.replace(/[/\\]/g, '-').replace('.dmn', '')}.tests.csv`
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function jsonElementToString(value) {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'object' && value !== null) {
+    // Handle JsonElement-like values that come from the API
+    if ('valueKind' in value) return ''
+    return String(value)
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  return String(value)
+}
+
+function escapeCsvField(value) {
+  if (value === null || value === undefined) return ''
+  const str = String(value)
+  if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+    return '"' + str.replace(/"/g, '""') + '"'
+  }
+  return str
 }
 
 async function importTestCases(event) {
@@ -1191,6 +1362,19 @@ async function importTestCases(event) {
       return
     }
 
+    // Ask replace or append if there are existing test cases
+    let mode = 'append'
+    if (testCases.value.length > 0) {
+      const replaceConfirmed = confirm(
+        `You have ${testCases.value.length} existing test case(s).\n\nClick OK to replace them, or Cancel to append the imported cases.`
+      )
+      mode = replaceConfirmed ? 'replace' : 'append'
+    }
+
+    if (mode === 'replace') {
+      testCases.value = []
+    }
+
     let added = 0
     for (const tc of cases) {
       if (!tc.decisionName || !tc.name) continue
@@ -1207,10 +1391,55 @@ async function importTestCases(event) {
     }
 
     await saveTestSuiteToServer()
-    alert(`Imported ${added} test case${added !== 1 ? 's' : ''}.`)
+    alert(`Imported ${added} test case${added !== 1 ? 's' : ''} (${mode === 'replace' ? 'replaced' : 'appended'}).`)
   } catch (err) {
     console.error('Import failed:', err)
     alert(`Import failed: ${err.message}`)
+  }
+
+  event.target.value = ''
+}
+
+async function importCsvTestCases(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  if (!selectedFileName.value) {
+    alert('Please select a DMN file first.')
+    event.target.value = ''
+    return
+  }
+
+  if (!selectedDecisionName.value) {
+    alert('Please select a decision first.')
+    event.target.value = ''
+    return
+  }
+
+  // Ask replace or append if there are existing test cases
+  let mode = 'append'
+  if (testCases.value.length > 0) {
+    const replaceConfirmed = confirm(
+      `You have ${testCases.value.length} existing test case(s).\n\nClick OK to replace them, or Cancel to append the imported cases.`
+    )
+    mode = replaceConfirmed ? 'replace' : 'append'
+  }
+
+  try {
+    const result = await api.importCsv(selectedFileName.value, selectedDecisionName.value, file, mode)
+
+    // Refresh test suite from server
+    const suite = await api.loadTests(selectedFileName.value)
+    testCases.value = suite.testCases || []
+
+    let message = `Imported ${result.imported} test case${result.imported !== 1 ? 's' : ''} (${result.totalTestCases} total, ${mode === 'replace' ? 'replaced' : 'appended'}).`
+    if (result.warnings?.length > 0) {
+      message += `\n\nWarnings:\n${result.warnings.join('\n')}`
+    }
+    alert(message)
+  } catch (err) {
+    console.error('CSV import failed:', err)
+    alert(`CSV import failed: ${err.data?.error || err.message}`)
   }
 
   event.target.value = ''
@@ -1478,7 +1707,11 @@ onMounted(async () => {
 
 /* Form Actions */
 .form-actions {
-  @apply flex gap-2 mt-6 pt-4 border-t border-gray-100;
+  @apply flex items-center gap-2 mt-6 pt-4 border-t border-gray-100;
+}
+
+.active-test-name {
+  @apply ml-auto text-xs font-medium text-gray-500 truncate max-w-[200px];
 }
 
 .btn {

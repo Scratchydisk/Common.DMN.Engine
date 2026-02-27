@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Xml.Linq;
 using net.adamec.lib.common.dmn.engine.testbed.Models;
 
 namespace net.adamec.lib.common.dmn.engine.testbed.Services;
@@ -77,6 +78,23 @@ public class DmnFileService
         var testPath = GetTestSuitePath(dmnPath);
         var json = JsonSerializer.Serialize(suite, JsonOptions);
         File.WriteAllText(testPath, json);
+    }
+
+    public void SaveDmnFile(string name, string xmlContent)
+    {
+        var fullPath = GetFilePath(name);
+
+        if (!fullPath.EndsWith(".dmn", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("File name must end with .dmn");
+
+        var dir = Path.GetDirectoryName(fullPath)!;
+        if (!System.IO.Directory.Exists(dir))
+            System.IO.Directory.CreateDirectory(dir);
+
+        // Basic XML validation
+        System.Xml.Linq.XDocument.Parse(xmlContent);
+
+        File.WriteAllText(fullPath, xmlContent);
     }
 
     private static string GetTestSuitePath(string dmnPath)

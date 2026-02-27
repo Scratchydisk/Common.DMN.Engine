@@ -41,6 +41,33 @@ export function useApi() {
     })
   }
 
+  async function uploadDmn(name: string, file: File): Promise<any> {
+    const formData = new FormData()
+    formData.append('file', file)
+    return await $fetch(`/api/dmn/upload/${name}`, {
+      method: 'POST',
+      body: formData
+    })
+  }
+
+  async function batchTestCsv(name: string, decisionName: string, file: File): Promise<any> {
+    const formData = new FormData()
+    formData.append('file', file)
+    return await $fetch(`/api/dmn/batch-test-csv/${name}?decisionName=${encodeURIComponent(decisionName)}`, {
+      method: 'POST',
+      body: formData
+    })
+  }
+
+  async function importCsv(name: string, decisionName: string, file: File, mode: 'replace' | 'append' = 'append'): Promise<any> {
+    const formData = new FormData()
+    formData.append('file', file)
+    return await $fetch(`/api/dmn/tests/import-csv/${name}?decisionName=${encodeURIComponent(decisionName)}&mode=${mode}`, {
+      method: 'POST',
+      body: formData
+    })
+  }
+
   return {
     listFiles,
     getXml,
@@ -48,6 +75,9 @@ export function useApi() {
     execute,
     loadTests,
     saveTests,
-    runTests
+    runTests,
+    uploadDmn,
+    batchTestCsv,
+    importCsv
   }
 }

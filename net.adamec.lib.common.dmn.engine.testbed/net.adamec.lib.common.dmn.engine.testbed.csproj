@@ -14,6 +14,9 @@
   <ItemGroup>
     <Content Remove="client/**" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+  </ItemGroup>
 
   <!-- Build the Nuxt client into wwwroot/ before the .NET build -->
   <Target Name="BuildClient" BeforeTargets="BeforeBuild" Condition="!Exists('wwwroot/index.html')">

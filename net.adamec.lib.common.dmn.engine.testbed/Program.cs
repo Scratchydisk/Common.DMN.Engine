@@ -20,6 +20,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddSingleton(new DmnFileService(dmnDir));
 builder.Services.AddSingleton<DmnExecutionService>();
+builder.Services.AddSingleton<CsvBatchTestService>();
 
 builder.Services.ConfigureHttpJsonOptions(opts =>
 {
@@ -163,6 +164,139 @@ app.MapPost("/api/dmn/tests/run/{**name}", (string name, DmnFileService fileServ
             Results = results,
             TotalTimeMs = sw.ElapsedMilliseconds
         });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Upload a DMN file
+app.MapPost("/api/dmn/upload/{**name}", async (string name, HttpRequest request, DmnFileService fileService) =>
+{
+    try
+    {
+        string xmlContent;
+
+        if (request.HasFormContentType)
+        {
+            var form = await request.ReadFormAsync();
+            var file = form.Files.GetFile("file");
+            if (file == null)
+                return Results.BadRequest(new { error = "No file uploaded. Use form field 'file'." });
+
+            using var reader = new StreamReader(file.OpenReadStream());
+            xmlContent = await reader.ReadToEndAsync();
+        }
+        else
+        {
+            using var reader = new StreamReader(request.Body);
+            xmlContent = await reader.ReadToEndAsync();
+        }
+
+        if (string.IsNullOrWhiteSpace(xmlContent))
+            return Results.BadRequest(new { error = "Empty file content" });
+
+        fileService.SaveDmnFile(name, xmlContent);
+
+        return Results.Ok(new UploadResult
+        {
+            Success = true,
+            FileName = name,
+            Message = $"File '{name}' uploaded successfully"
+        });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (System.Xml.XmlException)
+    {
+        return Results.BadRequest(new { error = "Invalid XML content" });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// CSV batch test
+app.MapPost("/api/dmn/batch-test-csv/{**name}", async (string name, HttpRequest request, CsvBatchTestService batchService) =>
+{
+    try
+    {
+        var decisionName = request.Query["decisionName"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(decisionName))
+            return Results.BadRequest(new { error = "Query parameter 'decisionName' is required" });
+
+        Stream csvStream;
+
+        if (request.HasFormContentType)
+        {
+            var form = await request.ReadFormAsync();
+            var file = form.Files.GetFile("file");
+            if (file == null)
+                return Results.BadRequest(new { error = "No file uploaded. Use form field 'file'." });
+            csvStream = file.OpenReadStream();
+        }
+        else
+        {
+            csvStream = request.Body;
+        }
+
+        var result = batchService.RunBatchTest(name, decisionName, csvStream);
+        return Results.Ok(result);
+    }
+    catch (FileNotFoundException)
+    {
+        return Results.NotFound(new { error = $"DMN file not found: {name}" });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+// Import CSV as test cases
+app.MapPost("/api/dmn/tests/import-csv/{**name}", async (string name, HttpRequest request, CsvBatchTestService batchService) =>
+{
+    try
+    {
+        var decisionName = request.Query["decisionName"].FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(decisionName))
+            return Results.BadRequest(new { error = "Query parameter 'decisionName' is required" });
+
+        Stream csvStream;
+
+        if (request.HasFormContentType)
+        {
+            var form = await request.ReadFormAsync();
+            var file = form.Files.GetFile("file");
+            if (file == null)
+                return Results.BadRequest(new { error = "No file uploaded. Use form field 'file'." });
+            csvStream = file.OpenReadStream();
+        }
+        else
+        {
+            csvStream = request.Body;
+        }
+
+        var mode = request.Query["mode"].FirstOrDefault() ?? "append";
+        var replace = string.Equals(mode, "replace", StringComparison.OrdinalIgnoreCase);
+        var result = batchService.ImportAsTestSuite(name, decisionName, csvStream, replace);
+        return Results.Ok(result);
+    }
+    catch (FileNotFoundException)
+    {
+        return Results.NotFound(new { error = $"DMN file not found: {name}" });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
     }
     catch (Exception ex)
     {
